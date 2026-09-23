@@ -1,0 +1,86 @@
+#!/usr/bin/env node
+/**
+ * Gate: no dangling controls in the app shell, and no runtime vocabulary baked into it.
+ *
+ * A control is "dangling" when clicking it cannot have an observable effect, or when it names
+ * a concept the runtime does not have. Only part of that is machine-checkable, and this gate
+ * only claims the part it can check:
+ *
+ *   1. every button/select/input in app/index.html carries an id, and that id appears
+ *      somewhere in app/**\/*.ts — i.e. something is actually wired to it;
+ *   2. no option value or unbuilt capability is written into the shell as static text
+ *      (the option menu is rendered from `configOptions`, so a literal `BUILD` on screen
+ *      means someone hardcoded a whitelist — exactly the failure the owner forbade).
+ *
+ * The rest of the dangler test — "does clicking do something sensible" — needs eyes, and the
+ * eyes are the owner's (no headless browsers here).
+ */
+
+import { readdirSync, readFileSync, statSync } from "node:fs";
+import { join } from "node:path";
+
+const SHELL = "app/index.html";
+
+/** Vocabulary that belongs to the runtime or to an unbuilt capability — never to the shell. */
+const RUNTIME_VOCABULARY = [
+  "ASK", // an omp-era mode the engine never had
+  "DO", // same
+  "PLAN", // engine option value: rendered from configOptions only
+  "BUILD", // ditto
+  "EFFORT", // appears per model, rendered from configOptions only
+  "THINKING", // not an option name in this engine at all
+  "DIFF", // HTTP-side capability, not wired
+  "REVERT", // ditto
+  "PTY", // ditto
+  "TODO", // upstream concept the contract forbids
+  "SUBAGENT", // ditto
+];
+
+const collectTs = (dir) => {
+  const out = [];
+  for (const entry of readdirSync(dir)) {
+    const full = join(dir, entry);
+    if (statSync(full).isDirectory()) out.push(...collectTs(full));
+    else if (entry.endsWith(".ts")) out.push(full);
+  }
+  return out;
+};
+
+const html = readFileSync(SHELL, "utf8");
+const tsText = collectTs("app").map((file) => readFileSync(file, "utf8")).join("\n");
+const body = html.slice(html.indexOf("<body>"));
+
+const failures = [];
+const controls = [...body.matchAll(/<(button|select|input)\b([^>]*)>/g)];
+let wired = 0;
+for (const [, tag, attributes] of controls) {
+  const id = /\sid="([^"]+)"/.exec(attributes);
+  if (id === null) {
+    failures.push(`<${tag}> without an id: every control must be wired to something`);
+    continue;
+  }
+  if (tsText.includes(`"${id[1]}"`) || tsText.includes(`'${id[1]}'`)) wired += 1;
+  else failures.push(`<${tag} id="${id[1]}"> has no reference in app/**/*.ts — dangling control?`);
+}
+
+// Static text only: scripts, styles and comments are not what the operator reads.
+const textOnly = body
+  .replace(/<script[\s\S]*?<\/script>/g, " ")
+  .replace(/<style[\s\S]*?<\/style>/g, " ")
+  .replace(/<!--[\s\S]*?-->/g, " ")
+  .replace(/<[^>]*>/g, " ")
+  .replace(/&[a-z]+;/g, " ");
+for (const word of RUNTIME_VOCABULARY) {
+  if (new RegExp(`\\b${word}\\b`).test(textOnly)) {
+    failures.push(`"${word}" appears as static text in ${SHELL}: runtime vocabulary must come from data, not from the shell`);
+  }
+}
+
+console.log(`${SHELL}: ${controls.length} control(s), ${wired} wired, ${RUNTIME_VOCABULARY.length} forbidden words checked`);
+if (failures.length === 0) {
+  console.log("\nPASS  no dangling controls, no baked-in runtime vocabulary");
+} else {
+  console.log(`\nFAIL  ${failures.length} problem(s)`);
+  for (const failure of failures) console.log(`      - ${failure}`);
+}
+process.exit(failures.length === 0 ? 0 : 1);

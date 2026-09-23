@@ -128,6 +128,20 @@ $env:T3RRA_ENGINE="opencode"; npm run dev     # → http://localhost:5191/
 - 建议顺序：**视觉 1.0（拿 `demo/ark-console.html` 当基准，把 token/几何/动效移植进 `app/`）**
   → Tauri 外壳（只换通道）→ 功能（会话列表/审批/静默判据）→ 期间视觉继续小步迭代。
 
+### 文档分工修正（2026-09-23，仓库主人要求）
+
+视觉这件事以前被写成了铁律，那是错的。现在的分工：
+
+- **[`visual-guide.md`](./visual-guide.md)**：给"前端能力更强的 agent"的视觉优化指南。
+  **硬约束只有四条**（① 不许悬空控件 ② 不许造事实/缺失写 absence ③ 无头禁用、验收归主人眼睛
+  ④ 信道与平台边界），其余视觉内容**明确授权重构**；并附"防悬空"的真实数据对照表。
+- **`design-contract.md`**：锁定项只剩**族 / 深度 / 暗色 / 平台决定**；§二 起（色板数值、字体栈、
+  构图、几何、动效）都是**做法，可替换**。
+- **"悬空控件"的可机检部分**：新增 `npm run check:app`——① 每个 button/select/input 必须有 id
+  且被 TS 引用（真的接上了）；② 运行时词汇（`ASK`/`DO`/`PLAN`/`BUILD`/`EFFORT`/`THINKING`/
+  `DIFF`/`REVERT`/`PTY`/`TODO`/`SUBAGENT`）不许作为静态文字出现在界面里。
+  剩下的"点了有没有合理反应"只有眼睛能判。
+
 ### 本轮其它决定
 
 - **工程写在本工作区**（`C:\DEV\develop\t3rra-C0d3`），产品代码的落点 `app/`。

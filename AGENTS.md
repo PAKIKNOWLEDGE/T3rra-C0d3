@@ -41,6 +41,10 @@
 ## 三、给 agent 的规矩
 
 - **文档中文，标识符/事件 kind/日志英文**（沿用 t3rra-core 约定）。
+- **视觉是开放项**：要做视觉优化，读 [`docs/visual-guide.md`](./docs/visual-guide.md)。
+  那里把**硬约束**（不许悬空控件、不许造事实、无头禁令、信道边界）与**可自由重构的视觉**分开写——
+  **视觉允许重构，换更好的方案不叫回潮**；`docs/design-contract.md` §二 起都是"做法"而非戒律。
+  唯一可机检的悬空控件规则在 `npm run check:app`。
 - **无头浏览器禁用**。不跑 puppeteer/playwright/jsdom，也不跑 ark-ui 的
   audit/capture 脚本。界面交付 = 给可双击打开的路径 + 人话说明看什么，
   等仓库主人的眼睛验收。**不许自行宣布视觉通过。**

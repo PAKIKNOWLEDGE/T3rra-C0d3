@@ -15,7 +15,8 @@
 | --- | --- |
 | [`status.md`](./status.md) | **先读这个**：现状、已决定的事、待拍板的开放项、事故记录（唯一允许写"决定了什么"的地方） |
 | [`adapters/opencode-acp.md`](./adapters/opencode-acp.md) | **引擎的实测映射表**：报文全集、契约级行为、有损列、未闭合项（换引擎的依据） |
-| [`design-contract.md`](./design-contract.md) | **界面标准答案**：ark 族 · complex · 只有暗色。色板/字体/构图/几何/动效/验收方式 |
+| [`visual-guide.md`](./visual-guide.md) | **做视觉优化先读这个**：硬约束（不许悬空控件 / 不许造事实 / 无头禁令 / 信道边界）与**可自由重构的视觉**分开写；含"防悬空"的真实数据对照表 |
+| [`design-contract.md`](./design-contract.md) | 界面做法记录：ark 族 · complex · 只有暗色。**§二 起都是做法、可替换**；锁定项只有族/深度/暗色与平台 |
 | [`design-critique.md`](./design-critique.md) | **界面反面清单**：旧 endfield 风格"不对味"的六个病灶，防回潮 |
 | [`design-review.md`](./design-review.md) | 范本盲审记录（三方独立）：已修/未修、契约修订、验收清单 |
 | [`blind-review-prompt.md`](./blind-review-prompt.md) · [`blind-review-result.md`](./blind-review-result.md) | 工程状态的盲审：给审阅者的 prompt 与审阅结果（含它对文档假话的清单） |
