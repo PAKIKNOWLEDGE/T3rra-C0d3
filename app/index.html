@@ -70,14 +70,29 @@
   .register button:hover { color: var(--ink); }
   .register button[aria-pressed="true"] { color: var(--base); background: var(--ink); }
 
-  /* ————————— 左轨（读数，不是导航：视图切换还没实现，就不假装能点） ————————— */
+  /* ————————— 左轨：三个真按键（PROCESS / EVENTS / NEW）。
+     曾经它们是 <div>，正好躲过 check:app 的控件扫描——于是屏幕上摆着三个死按键而闸全绿。
+     现在闸会抓这类"看着能点但不是控件"的元素，这三个也就只能是真控件。 ————————— */
   .rail { grid-area: rail; background: var(--shell); border-right: 1px solid var(--rule); display: flex; flex-direction: column; }
   .rail .glyph { height: 52px; display: grid; place-items: center; border-bottom: 1px solid var(--rule); font-family: var(--f-display); font-size: 13px; color: var(--signal); }
-  .rail .item { padding: 16px 0; display: grid; gap: 10px; place-items: center; color: var(--dim); border-bottom: 1px solid var(--rule); }
+  .rail .item {
+    appearance: none; border: 0; border-bottom: 1px solid var(--rule); background: none; cursor: pointer;
+    padding: 16px 0; display: grid; gap: 10px; place-items: center; color: var(--dim);
+    transition: color 180ms var(--ease), background-color 180ms var(--ease);
+  }
+  .rail .item:hover { color: var(--ink); background: var(--raised); }
   .rail .item[aria-current="true"] { color: var(--ink); box-shadow: inset 3px 0 0 var(--signal); }
   .rail .label { writing-mode: vertical-rl; font-family: var(--f-narrow); font-size: 10px; letter-spacing: .22em; text-transform: uppercase; }
   .rail .idx { font-family: var(--f-display); font-size: 11px; }
   .rail .grow { flex: 1; }
+
+  /* ————————— 原始事件日志（EVENTS 视图；数据是真事件，不是装饰） ————————— */
+  .events { position: relative; z-index: 2; min-height: 0; overflow-y: auto; font-family: var(--f-mono); font-size: 12px; display: grid; gap: 0; align-content: start; scrollbar-width: thin; scrollbar-color: var(--rule-mid) transparent; }
+  .events .legend { font-family: var(--f-narrow); font-size: 10px; letter-spacing: .2em; text-transform: uppercase; color: var(--muted); padding-bottom: 10px; border-bottom: 1px solid var(--rule); }
+  .events .row { display: grid; grid-template-columns: 66px 190px minmax(0, 1fr); gap: 14px; align-items: baseline; border-bottom: 1px solid var(--rule); padding: 6px 0; }
+  .events .at { color: var(--dim); }
+  .events .kind { color: var(--signal); }
+  .events .detail { color: var(--muted); overflow-wrap: anywhere; }
 
   /* ————————— 舞台 ————————— */
   .stage {
@@ -218,11 +233,11 @@
   </header>
 
   <nav class="rail" aria-label="views">
-    <div class="glyph">◈</div>
-    <div class="item" aria-current="true" title="视图切换还没实现：这里只做读数，不做导航"><span class="idx">01</span><span class="label">Process</span></div>
-    <div class="item" title="视图切换还没实现"><span class="idx">02</span><span class="label">Events</span></div>
+    <div class="glyph" aria-hidden="true">◈</div>
+    <button type="button" class="item" id="viewProcess" aria-current="true"><span class="idx">01</span><span class="label">Process</span></button>
+    <button type="button" class="item" id="viewEvents"><span class="idx">02</span><span class="label">Events</span></button>
     <div class="grow"></div>
-    <div class="item" title="多会话还没实现"><span class="idx">＋</span><span class="label">New</span></div>
+    <button type="button" class="item" id="newSession" title="open a fresh session in the same engine"><span class="idx">＋</span><span class="label">New</span></button>
   </nav>
 
   <main class="stage">
@@ -248,9 +263,14 @@
       </div>
     </div>
 
-    <div class="feed-wrap">
+    <div class="feed-wrap" id="processView">
       <div class="stream" id="stream" aria-live="polite" aria-label="agent stream"></div>
       <div class="stamp" id="stamp">no session filed</div>
+    </div>
+
+    <div class="events" id="eventsView" hidden aria-label="raw event log">
+      <div class="legend">Raw event log · every translated event, in order</div>
+      <div id="eventsList"></div>
     </div>
   </main>
 

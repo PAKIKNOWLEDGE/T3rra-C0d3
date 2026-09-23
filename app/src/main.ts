@@ -18,7 +18,7 @@ import type { AgentEvent } from "./contract/events.ts";
 import { createBridgeTransport, type Transport } from "./engine/transport.ts";
 import { emptyView, reduceView, type ConsoleView } from "./view/derive.ts";
 import { beginWaiting, discardSamples, endTurn, observeActivity, report, startCadence, type ActivityPhase, type Cadence } from "./view/cadence.ts";
-import { mountConsole, type SessionFacts } from "./ui/console.ts";
+import { mountConsole, type EventLogEntry, type SessionFacts } from "./ui/console.ts";
 
 const ui = mountConsole();
 const transport: Transport = createBridgeTransport(crypto.randomUUID());
@@ -56,9 +56,40 @@ const phaseOf = (event: AgentEvent): ActivityPhase | null => {
 };
 
 let cadence: Cadence = startCadence();
+let eventLog: EventLogEntry[] = [];
+const sessionStartedAt = { at: Date.now() };
+
+/** A one-line, factual description of an event for the EVENTS view. */
+const describe = (event: AgentEvent): string => {
+  const src = `${event.from.method}${event.from.variant === undefined ? "" : `/${event.from.variant}`}`;
+  switch (event.kind) {
+    case "session.opened": return `session ${event.sessionId}`;
+    case "options.updated":
+      return `${event.options.length} option(s): ${event.options.map((option) => `${option.id}=${option.currentValue}`).join(", ")}`;
+    case "message.appended": return `${event.role} · ${event.text.length} chars · ${src}`;
+    case "thought.appended": return `reasoning · ${event.text.length} chars`;
+    case "tool.started": return `${event.title === "" ? "(untitled)" : event.title} · ${event.hint === "" ? "tool" : event.hint}`;
+    case "tool.updated": return `${event.toolCallId} · ${event.status === "" ? "no status" : event.status}`;
+    case "permission.requested": return event.summary;
+    case "prompt.ended": return `stop reason ${event.stopReason}`;
+    case "engine.stderr": return event.text;
+    case "engine.exited": return `code ${event.code ?? "—"} · signal ${event.signal ?? "—"}`;
+    case "message.unmapped": return `from ${src}`;
+  }
+};
+
+const logEvents = (events: readonly AgentEvent[]): void => {
+  if (events.length === 0) return;
+  const now = Date.now();
+  for (const event of events) {
+    eventLog.push({ at: `+${((now - sessionStartedAt.at) / 1000).toFixed(1)}s`, kind: event.kind, detail: describe(event) });
+  }
+  eventLog = eventLog.slice(-500);
+};
 const silenceNow = (): SessionFacts => ({ silence: report(cadence, facts.busy === true, Date.now()) });
 
 const apply = (events: readonly AgentEvent[]): void => {
+  logEvents(events);
   const now = Date.now();
   for (const event of events) {
     view = reduceView(view, event);
@@ -68,6 +99,7 @@ const apply = (events: readonly AgentEvent[]): void => {
   }
   ui.render(view);
   patch(silenceNow());
+  if (currentView === "events") ui.renderEvents(eventLog);
 };
 
 const send = (method: string, params: unknown): number => {
@@ -84,6 +116,12 @@ const handleResponse = (id: number, method: string, result: unknown): boolean =>
   const mapping = mapResponse(method, result);
   if (mapping.agentName !== undefined) patch({ engine: mapping.agentName });
   if (mapping.sessionId !== undefined) {
+    if (view.sessionId !== undefined && view.sessionId !== mapping.sessionId) {
+      // A different session: the stream and the log belonged to the old one.
+      view = emptyView();
+      eventLog = [];
+      sessionStartedAt.at = Date.now();
+    }
     cadence = startCadence(); // a new session has no measured cadence of its own yet
     patch({
       sessionId: mapping.sessionId,
@@ -153,6 +191,21 @@ transport.onError((message) => {
   apply([{ kind: "engine.stderr", from: { method: "stderr", variant: undefined }, text: message }]);
 });
 
+let currentView: "process" | "events" = "process";
+ui.onViewChange((next) => {
+  currentView = next;
+  ui.setView(next);
+  if (next === "events") ui.renderEvents(eventLog);
+});
+
+/** `＋ NEW`: a fresh session in the same engine. The response handler takes it from there. */
+ui.onNewSession(() => {
+  if (facts.binary === undefined) return;
+  patch({ phase: "[ OPENING SESSION ]", phaseNote: "NEW SESSION REQUESTED", busy: false });
+  ui.setView("process");
+  send("session/new", { cwd: facts.cwd ?? ".", mcpServers: [] });
+});
+
 ui.onSubmit((text) => {
   if (view.sessionId === undefined) {
     ui.setPlaceholder("NO SESSION YET");
@@ -194,6 +247,7 @@ setInterval(() => {
 }, 1000);
 
 ui.render(view);
+ui.setView("process");
 patch({});
 void handshake().catch((error: unknown) => {
   ui.setLink("down");

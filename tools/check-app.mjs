@@ -64,6 +64,25 @@ for (const [, tag, attributes] of controls) {
   else failures.push(`<${tag} id="${id[1]}"> has no reference in app/**/*.ts — dangling control?`);
 }
 
+// Blind spot that let a real violation through: three rail items were written as <div>s, so the
+// control check above never looked at them and the gate stayed green while the screen showed
+// three dead keys. Anything that *reads* as interactive has to be a control, whatever tag it is.
+const CLICKABLE_SMELLS = [/\stitle="/, /\saria-current="/, /\scursor:\s*pointer/, /\shover:\s*/];
+const NAV_TAGS = new Set(["BUTTON", "SELECT", "INPUT", "A", "TEXTAREA"]);
+for (const [tag, attributes] of [...body.matchAll(/<([a-z][a-z0-9-]*)\b([^>]*)>/gi)].map((m) => [m[1].toUpperCase(), m[2]])) {
+  if (NAV_TAGS.has(tag)) continue;
+  if (["DIV", "SPAN", "LI", "SECTION", "ASIDE", "NAV", "MAIN", "HEADER", "FOOTER", "LABEL"].includes(tag) === false) continue;
+  const id = /\sid="([^"]+)"/.exec(attributes);
+  const named = id !== null && (tsText.includes(`"${id[1]}"`) || tsText.includes(`'${id[1]}'`));
+  if (named) continue; // a container the script drives is not a fake control
+  const smells = CLICKABLE_SMELLS.filter((pattern) => pattern.test(attributes)).length;
+  if (smells > 0) {
+    failures.push(
+      `<${tag.toLowerCase()}${id === null ? "" : ` id="${id[1]}"`}> looks interactive (${smells} cue(s)) but is not a control the script drives — make it real or make it plainly static`,
+    );
+  }
+}
+
 // Static text only: scripts, styles and comments are not what the operator reads.
 const textOnly = body
   .replace(/<script[\s\S]*?<\/script>/g, " ")

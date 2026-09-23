@@ -20,6 +20,13 @@ const need = <T extends HTMLElement>(id: string): T => {
 };
 
 /** Facts about the run that come from the process and the clock, not from the event stream. */
+/** One line of the raw event log: the EVENTS view shows translated events, verbatim. */
+export interface EventLogEntry {
+  readonly at: string;
+  readonly kind: string;
+  readonly detail: string;
+}
+
 export interface SessionFacts {
   readonly engine?: string | undefined;
   readonly sessionId?: string | undefined;
@@ -40,6 +47,10 @@ export interface ConsoleHandles {
   onSubmit(handler: (text: string) => void): void;
   onRestart(handler: () => void): void;
   onOptionChange(handler: (optionId: string, value: string) => void): void;
+  onViewChange(handler: (view: "process" | "events") => void): void;
+  onNewSession(handler: () => void): void;
+  setView(view: "process" | "events"): void;
+  renderEvents(entries: readonly EventLogEntry[]): void;
   setLink(state: "ok" | "down"): void;
   setFacts(facts: SessionFacts): void;
   setPlaceholder(text: string): void;
@@ -85,6 +96,12 @@ export const mountConsole = (): ConsoleHandles => {
   const sSamples = need("sSamples");
   const sThresholds = need("sThresholds");
   const sLastSign = need("sLastSign");
+  const processView = need("processView");
+  const eventsView = need("eventsView");
+  const eventsList = need("eventsList");
+  const viewProcessButton = need<HTMLButtonElement>("viewProcess");
+  const viewEventsButton = need<HTMLButtonElement>("viewEvents");
+  const newSessionButton = need<HTMLButtonElement>("newSession");
   const transportPanel = need("transportPanel");
   const registerOperator = need<HTMLButtonElement>("regOperator");
   const registerExpert = need<HTMLButtonElement>("regExpert");
@@ -259,7 +276,64 @@ export const mountConsole = (): ConsoleHandles => {
   registerExpert.addEventListener("click", () => syncRegister(true));
   syncRegister(false);
 
+  const applyView = (view: "process" | "events"): void => {
+    processView.hidden = view !== "process";
+    eventsView.hidden = view !== "events";
+    viewProcessButton.setAttribute("aria-current", String(view === "process"));
+    viewEventsButton.setAttribute("aria-current", String(view === "events"));
+  };
+
+  const renderEventLog = (entries: readonly EventLogEntry[]): void => {
+    const pinned = eventsView.scrollTop + eventsView.clientHeight >= eventsView.scrollHeight - 24;
+    eventsList.replaceChildren();
+    if (entries.length === 0) {
+      const empty = document.createElement("div");
+      empty.className = "row";
+      const at = document.createElement("span");
+      at.className = "at";
+      at.textContent = "—";
+      const kind = document.createElement("span");
+      kind.className = "kind";
+      kind.textContent = "none";
+      const detail = document.createElement("span");
+      detail.className = "detail";
+      detail.textContent = "no event in this session yet";
+      empty.append(at, kind, detail);
+      eventsList.append(empty);
+      return;
+    }
+    for (const entry of entries) {
+      const row = document.createElement("div");
+      row.className = "row";
+      const at = document.createElement("span");
+      at.className = "at";
+      at.textContent = entry.at;
+      const kind = document.createElement("span");
+      kind.className = "kind";
+      kind.textContent = entry.kind;
+      const detail = document.createElement("span");
+      detail.className = "detail";
+      detail.textContent = entry.detail;
+      row.append(at, kind, detail);
+      eventsList.append(row);
+    }
+    if (pinned) eventsView.scrollTop = eventsView.scrollHeight;
+  };
+
   return {
+    onViewChange(handler): void {
+      viewProcessButton.addEventListener("click", () => handler("process"));
+      viewEventsButton.addEventListener("click", () => handler("events"));
+    },
+    onNewSession(handler): void {
+      newSessionButton.addEventListener("click", handler);
+    },
+    setView(view): void {
+      applyView(view);
+    },
+    renderEvents(entries): void {
+      renderEventLog(entries);
+    },
     onSubmit(handler): void {
       const fire = (): void => {
         const text = input.value.trim();
