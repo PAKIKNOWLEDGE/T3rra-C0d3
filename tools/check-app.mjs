@@ -77,6 +77,20 @@ for (const word of RUNTIME_VOCABULARY) {
   }
 }
 
+// The renderer reaches for ids by name and throws at runtime if one is missing; that failure
+// is cheap to catch statically, and a typo here would otherwise surface only in the browser.
+const RENDERER = "app/src/ui/console.ts";
+if (!existsSync(RENDERER)) {
+  failures.push(`${RENDERER} is missing`);
+} else {
+  const renderer = readFileSync(RENDERER, "utf8");
+  const wanted = [...new Set([...renderer.matchAll(/need(?:<[^>]*>)?\("([^"]+)"\)/g)].map((m) => m[1]))];
+  const shellIds = new Set([...html.matchAll(/\sid="([^"]+)"/g)].map((m) => m[1]));
+  const absent = wanted.filter((id) => !shellIds.has(id));
+  for (const id of absent) failures.push(`${RENDERER} needs #${id}, which ${SHELL} does not define`);
+  notes.push(`${wanted.length - absent.length}/${wanted.length} renderer ids resolve`);
+}
+
 // Fonts: a missing file is a silent font change, and silent font changes are how a design
 // drifts. Every url() in the font stylesheet must resolve next to it.
 const FONT_CSS = "app/fonts/fonts.css";

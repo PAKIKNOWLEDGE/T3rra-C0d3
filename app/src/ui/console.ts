@@ -65,6 +65,7 @@ export const mountConsole = (): ConsoleHandles => {
   const stream = need("stream");
   const stamp = need("stamp");
   const options = need("options");
+  const modes = need("modes");
   const tools = need("tools");
   const pSession = need("pSession");
   const pStarted = need("pStarted");
@@ -84,20 +85,45 @@ export const mountConsole = (): ConsoleHandles => {
   const restart = need<HTMLButtonElement>("restart");
 
   let optionHandler: (optionId: string, value: string) => void = () => {};
-  const optionNodes = new Map<string, HTMLSelectElement>();
+  let optionSignature = "";
   let facts: SessionFacts = {};
 
+  /**
+   * Options are rendered by what the runtime says they are, not by an id whitelist:
+   *   - `category === "mode"` is a small closed set that decides how the instruction is read,
+   *     so it becomes the dock's paired chips (next to the prompt, where the mode matters);
+   *   - everything else (`model`, `effort`, …) is a setting and stays in the dossier.
+   * A dropdown for two choices would have been the app drifting away from the design.
+   */
   const renderOptions = (view: ConsoleView): void => {
-    const signature = view.options.map((option) => `${option.id}=${option.currentValue}`).join("|");
-    const current = [...optionNodes.entries()].map(([id, node]) => `${id}=${node.value}`).join("|");
-    if (signature === current && optionNodes.size === view.options.length) return; // nothing moved
-    if (view.options.length === 0) {
-      if (optionNodes.size === 0) options.innerHTML = '<div class="empty">NOT DECLARED YET</div>';
+    const signature = view.options.map((option) => `${option.category}/${option.id}=${option.currentValue}`).join("|");
+    if (signature === optionSignature) return;
+    optionSignature = signature;
+
+    const modality = view.options.filter((option) => option.category === "mode");
+    const settings = view.options.filter((option) => option.category !== "mode");
+
+    modes.replaceChildren();
+    for (const option of modality) {
+      for (const choice of option.choices) {
+        const chip = document.createElement("button");
+        chip.type = "button";
+        chip.textContent = choice.name === "" ? choice.value : choice.name.toUpperCase();
+        chip.setAttribute("aria-pressed", String(choice.value === option.currentValue));
+        chip.addEventListener("click", () => optionHandler(option.id, choice.value));
+        modes.append(chip);
+      }
+    }
+
+    options.replaceChildren();
+    if (settings.length === 0) {
+      const empty = document.createElement("div");
+      empty.className = "empty";
+      empty.textContent = "NOT DECLARED YET";
+      options.append(empty);
       return;
     }
-    options.replaceChildren();
-    optionNodes.clear();
-    for (const option of view.options) {
+    for (const option of settings) {
       const label = document.createElement("label");
       const caption = document.createElement("span");
       caption.className = "micro";
@@ -112,7 +138,6 @@ export const mountConsole = (): ConsoleHandles => {
         select.append(node);
       }
       select.addEventListener("change", () => optionHandler(option.id, select.value));
-      optionNodes.set(option.id, select);
       label.append(caption, select);
       options.append(label);
     }
