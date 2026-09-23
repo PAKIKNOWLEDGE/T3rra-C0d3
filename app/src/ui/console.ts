@@ -11,6 +11,7 @@
  */
 
 import type { ConsoleView } from "../view/derive.ts";
+import { toSeconds, type SilenceReport } from "../view/cadence.ts";
 
 const need = <T extends HTMLElement>(id: string): T => {
   const node = document.getElementById(id);
@@ -29,6 +30,7 @@ export interface SessionFacts {
   readonly exit?: string | undefined;
   readonly lastError?: string | undefined;
   readonly elapsedSeconds?: number | undefined;
+  readonly silence?: SilenceReport | undefined;
   readonly phase?: string | undefined;
   readonly phaseNote?: string | undefined;
   readonly busy?: boolean | undefined;
@@ -77,6 +79,12 @@ export const mountConsole = (): ConsoleHandles => {
   const pLastError = need("pLastError");
   const pUnmapped = need("pUnmapped");
   const pProvenance = need("pProvenance");
+  const sLevel = need("sLevel");
+  const sQuiet = need("sQuiet");
+  const sBaseline = need("sBaseline");
+  const sSamples = need("sSamples");
+  const sThresholds = need("sThresholds");
+  const sLastSign = need("sLastSign");
   const transportPanel = need("transportPanel");
   const registerOperator = need<HTMLButtonElement>("regOperator");
   const registerExpert = need<HTMLButtonElement>("regExpert");
@@ -183,6 +191,62 @@ export const mountConsole = (): ConsoleHandles => {
     return wrap;
   };
 
+  /**
+   * The stage's anchor and verdict, derived only from what was measured.
+   *  - busy with a baseline: the anchor is the quiet seconds and the verdict is the level;
+   *  - busy without one: the seconds are still a fact, but the verdict says `Not Established`
+   *    (rule 7: fewer than three samples means no judgement, and the hard limit is a backstop,
+   *    never a measurement);
+   *  - not busy: the anchor falls back to the session clock, and the comparison line says the
+   *    silence is not measured at all, rather than pretending the session is stalling.
+   */
+  const renderStage = (): void => {
+    const busy = facts.busy === true;
+    const silence = facts.silence;
+    if (!busy) {
+      const seconds = facts.elapsedSeconds;
+      anchorNum.textContent = seconds === undefined ? "—" : String(seconds);
+      anchorUnit.textContent = seconds === undefined ? "" : "s";
+      verdict.textContent = facts.sessionId === undefined ? "Idle" : "Ready";
+      compare.textContent = "NO RUN IN FLIGHT · SILENCE NOT MEASURED";
+      return;
+    }
+    const quiet = toSeconds(silence?.quietMs ?? null);
+    anchorNum.textContent = quiet === null ? "—" : String(quiet);
+    anchorUnit.textContent = quiet === null ? "" : "s";
+
+    const samples = silence?.samples ?? 0;
+    if (silence === undefined || silence.level === "unmeasured") {
+      verdict.textContent = "Not Established";
+      compare.textContent = [
+        quiet === null ? "QUIET —" : `QUIET ${quiet}s`,
+        `CADENCE NOT ESTABLISHED (${samples}/3 SAMPLES)`,
+        silence?.backstopExceeded === true ? "HARD LIMIT EXCEEDED" : null,
+      ]
+        .filter((part) => part !== null)
+        .join(" · ");
+      return;
+    }
+    verdict.textContent = silence.level === "stalled" ? "Stalled" : silence.level === "slow" ? "Slow" : "Nominal";
+    const baseline = silence.baselineMs === null ? "—" : `${Math.round(silence.baselineMs)}ms`;
+    const ratio = silence.ratio === null ? "—" : `×${silence.ratio.toFixed(1)}`;
+    compare.textContent = `QUIET ${quiet ?? "—"}s · USUALLY ${baseline} · ${ratio} (STALLS AT ×25)`;
+  };
+
+  const renderSignal = (): void => {
+    const silence = facts.silence;
+    const samples = silence?.samples ?? 0;
+    sLevel.textContent = silence === undefined || silence.level === "unmeasured" ? "NOT ESTABLISHED" : silence.level.toUpperCase();
+    sQuiet.textContent = silence?.quietMs === null || silence?.quietMs === undefined ? "—" : `${toSeconds(silence.quietMs)}s`;
+    sBaseline.textContent = silence?.baselineMs === null || silence?.baselineMs === undefined ? "—" : `${Math.round(silence.baselineMs)}ms`;
+    sSamples.textContent = `${samples} / 3`;
+    sThresholds.textContent =
+      silence?.baselineMs === null || silence?.baselineMs === undefined
+        ? "SLOW ×8 · STALLED ×25"
+        : `SLOW ${Math.round(silence.baselineMs * 8)}ms · STALLED ${Math.round(silence.baselineMs * 25)}ms`;
+    sLastSign.textContent = silence?.lastSignKind ?? "—";
+  };
+
   // The register is pure presentation of what is already known, so it is wired here rather
   // than in main: EXPERT reveals the transport facts that OPERATOR does not need.
   const syncRegister = (expert: boolean): void => {
@@ -243,9 +307,8 @@ export const mountConsole = (): ConsoleHandles => {
       if (next.phase !== undefined) phase.textContent = next.phase;
       if (next.phaseNote !== undefined) phaseNote.textContent = next.phaseNote;
       document.documentElement.dataset["busy"] = next.busy === true ? "true" : "false";
-      const seconds = facts.elapsedSeconds;
-      anchorNum.textContent = seconds === undefined ? "—" : String(seconds);
-      anchorUnit.textContent = seconds === undefined ? "" : "s";
+      renderStage();
+      renderSignal();
     },
     setPlaceholder(text): void {
       input.placeholder = text;
@@ -269,13 +332,8 @@ export const mountConsole = (): ConsoleHandles => {
         .map(([block, kinds]) => `${block}:${kinds.length}`)
         .join(" · ");
 
-      // The anchor is the clock. Silence judgement is not implemented, and saying so is better
-      // than inventing a stall: `SILENCE NOT MEASURED` is an absence, not a verdict.
-      const running = facts.busy === true;
-      verdict.textContent = running ? "Running" : facts.sessionId === undefined ? "Idle" : "Ready";
-      compare.textContent = running
-        ? `STREAMING · ${view.stream.length} ENTRY(IES) · SILENCE NOT MEASURED`
-        : "NO RUN IN FLIGHT · SILENCE NOT MEASURED";
+      renderStage();
+      renderSignal();
 
       stamp.textContent = [
         facts.startedAt === undefined ? "no session filed" : `filed ${facts.startedAt}`,

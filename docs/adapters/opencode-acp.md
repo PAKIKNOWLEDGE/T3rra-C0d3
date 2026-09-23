@@ -61,6 +61,11 @@
   换会话重测才定下来——所以"挑一个有历史的会话"是这类实验的必要条件。）
 - **`session/list` 只给四个字段**：`{sessionId, cwd, title, updatedAt}`，**没有消息数/轮数**。
   界面若要显示"这个会话多少轮"，ACP 面里拿不到（要么不显示，要么走 HTTP API）。
+- **`session/cancel` 不存在**（实测 2026-09-23，opencode 1.18.32）：请求 `session/cancel` 得到
+  **`-32601 "Method not found": session/cancel`**，引擎同时把它写到 stderr。也就是说 **ACP 面没有中断**；
+  "坞里的 HALT" 得走别处。替代在 HTTP 面：本地导出的 OpenAPI 里存在
+  **`POST /session/{sessionID}/abort`** 与 **`POST /api/session/{sessionID}/interrupt`**（v2 风格路径
+  在这个版本也已出现）→ 中断要么接入 HTTP 通道，要么杀进程（当前的 `RESTART ⟲` 就是后者）。
 - **`session/set_config_option { sessionId, configId, value }` 可用**，且**响应里带回完整的
   `configOptions`** —— 界面改 model/mode 后照它重渲染即可，不需要自己维护清单。
 - `session/new` 里 **`modes` 为 `null`**：模式不在 `modes` 字段，而是 configOptions 的 `mode`。

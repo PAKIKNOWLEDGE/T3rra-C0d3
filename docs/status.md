@@ -170,6 +170,25 @@ last error/unmapped/provenance）——这是纯展示层，接线在 `console.t
 thought 流式 → `agent_message_chunk`("ok") → `usage_update`（按 COUNTED 记）→ 响应带 `stopReason`。
 **渲染观感仍归主人的眼睛**（无头禁令不变）。
 
+### 静默判据落地 + 中断的实测结论（2026-09-23）
+
+**静默判据（规则 7–9）已实现并有测试**：`app/src/view/cadence.ts`（纯函数，时钟注入）+ `test/cadence.test.ts`（11 例）。
+
+- 基线 = **当前相位**已测间隔的**中位数**；`×8` 记 slow、`×25` 记 stalled；**样本 < 3 一律拒绝给判据**
+  （显示 `NOT ESTABLISHED`）；10 分钟硬上限**只作兜底**，并且明确标出来（`HARD LIMIT EXCEEDED`），不冒充测量。
+- **间隔按相位分账**（等待 / 流式 / 工具）：规则 8 说间隔归给"等待期间活跃"的相位，所以首字延迟与工具节奏
+  不能共用一个基线。**这一条是测试抓出来的**——我最初把各相位混进一个样本表，4 条测试当场变红。
+- 非运行期间的间隔丢弃；**换 model 丢样本**（规则 9）；新会话重置。
+- 界面效果：运行时**大锚点变成"静默秒数"**，判决词给 `Stalled / Slow / Nominal / Not Established`，
+  比较行给 `QUIET Ns · USUALLY Xms · ×R`；右栏新增 `[ SIGNAL ]` 面板（LEVEL / QUIET / BASELINE /
+  SAMPLES `n/3` / THRESHOLDS / LAST SIGN）。**不运行时不判**，锚点退回会话秒表。
+
+**中断的实测结论**：`session/cancel` 在 ACP 面**不存在**（`-32601 Method not found`，探针
+`spike/probe-session-cancel.mjs` 实测，trace 在 `traces/opencode/*-cancel-probe.jsonl`）。
+HTTP 面有 `POST /session/{sessionID}/abort` 与 `/api/session/{sessionID}/interrupt`（本地 OpenAPI 导出里查到的）。
+→ **所以现在坞里唯一真中断是 `RESTART ⟲`（杀进程重开）；要做 HALT，得先接 HTTP 通道**
+（那一步同时解锁 `diff` / `revert` / `pty`）。
+
 ### 本轮其它决定
 
 - **工程写在本工作区**（`C:\DEV\develop\t3rra-C0d3`），产品代码的落点 `app/`。

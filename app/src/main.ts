@@ -17,6 +17,7 @@ import { mapResponse } from "./engine/responses.ts";
 import type { AgentEvent } from "./contract/events.ts";
 import { createBridgeTransport, type Transport } from "./engine/transport.ts";
 import { emptyView, reduceView, type ConsoleView } from "./view/derive.ts";
+import { beginWaiting, discardSamples, endTurn, observeActivity, report, startCadence, type ActivityPhase, type Cadence } from "./view/cadence.ts";
 import { mountConsole, type SessionFacts } from "./ui/console.ts";
 
 const ui = mountConsole();
@@ -36,9 +37,37 @@ const patch = (next: SessionFacts): void => {
   ui.setFacts(next);
 };
 
-const apply = (events: ReturnType<typeof translateLine>["events"]): void => {
-  for (const event of events) view = reduceView(view, event);
+/**
+ * Which activity a sign belongs to. Only signs of the runtime *working on the turn* count:
+ * option chatter and transport notices are not work, and the idle-to-first-event gap is
+ * dropped by the cadence module anyway (rule 8).
+ */
+const phaseOf = (event: AgentEvent): ActivityPhase | null => {
+  switch (event.kind) {
+    case "message.appended":
+    case "thought.appended":
+      return "streaming";
+    case "tool.started":
+    case "tool.updated":
+      return "tool";
+    default:
+      return null;
+  }
+};
+
+let cadence: Cadence = startCadence();
+const silenceNow = (): SessionFacts => ({ silence: report(cadence, facts.busy === true, Date.now()) });
+
+const apply = (events: readonly AgentEvent[]): void => {
+  const now = Date.now();
+  for (const event of events) {
+    view = reduceView(view, event);
+    const phase = phaseOf(event);
+    if (phase !== null) cadence = observeActivity(cadence, phase, now, event.kind);
+    if (event.kind === "prompt.ended") cadence = endTurn(cadence);
+  }
   ui.render(view);
+  patch(silenceNow());
 };
 
 const send = (method: string, params: unknown): number => {
@@ -55,6 +84,7 @@ const handleResponse = (id: number, method: string, result: unknown): boolean =>
   const mapping = mapResponse(method, result);
   if (mapping.agentName !== undefined) patch({ engine: mapping.agentName });
   if (mapping.sessionId !== undefined) {
+    cadence = startCadence(); // a new session has no measured cadence of its own yet
     patch({
       sessionId: mapping.sessionId,
       startedAt: new Date().toISOString().replace("T", " ").slice(0, 19),
@@ -68,6 +98,7 @@ const handleResponse = (id: number, method: string, result: unknown): boolean =>
   for (const event of mapping.events) {
     if (event.kind === "prompt.ended") {
       patch({ busy: false, phase: "[ READY ]", phaseNote: `TURN ENDED · ${event.stopReason.toUpperCase()}` });
+      patch(silenceNow());
     }
   }
   return mapping.recognised;
@@ -130,7 +161,8 @@ ui.onSubmit((text) => {
   // The operator's own line is a fact of the operator, not a claim about the runtime.
   apply([{ kind: "message.appended", from: { method: "operator", variant: undefined }, role: "user", messageId: `local-${nextId}`, text }]);
   if (facts.topic === undefined) patch({ topic: text });   // the stage title comes from the instruction
-  patch({ busy: true, phase: "[ RUNNING ]", phaseNote: "STREAMING · ESC NOT WIRED (session/cancel UNVERIFIED)" });
+  cadence = beginWaiting(cadence, Date.now());
+  patch({ busy: true, phase: "[ RUNNING ]", phaseNote: "STREAMING · INTERRUPT NOT AVAILABLE OVER ACP (session/cancel: METHOD NOT FOUND)", ...silenceNow() });
   send("session/prompt", { sessionId: view.sessionId, prompt: [{ type: "text", text }] });
 });
 
@@ -148,6 +180,8 @@ ui.onRestart(() => {
 
 ui.onOptionChange((optionId, value) => {
   if (view.sessionId === undefined) return;
+  // Rule 9: a different model has a different cadence, so its samples are not evidence.
+  if (optionId === "model") cadence = discardSamples(cadence);
   send("session/set_config_option", { sessionId: view.sessionId, configId: optionId, value });
 });
 
@@ -156,7 +190,7 @@ let elapsed = 0;
 setInterval(() => {
   if (facts.sessionId === undefined) return;
   elapsed += 1;
-  patch({ elapsedSeconds: elapsed });
+  patch({ elapsedSeconds: elapsed, ...silenceNow() });
 }, 1000);
 
 ui.render(view);
