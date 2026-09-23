@@ -1,0 +1,1030 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-ark-theme="ark" data-ark-depth="complex" data-expert="false" data-state="stalled">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>T3RRA // ARK CONSOLE — 视觉演示</title>
+<style>
+  /* ============================================================
+     T3RRA · ark 族 · complex 深度 · 视觉演示（静态，非产品）
+
+     证据出处：
+       - 视觉：ark-ui/references/recipes.md §Ark、assets/tokens/ark-ui.tokens.json、
+               assets/showcases/screenshots/ark-complex.png（家族签名取自参考图）
+       - 语域与动作语义：真产品 t3rra-core 的 src/ui/dock.ts、src/ui/console.ts、
+               src/view/derive.ts（停滞判据、NEEDS YOU 文案、动作=状态）
+
+     舞台=当前操作 / 边缘=仪表 / 底部=元数据基线。
+     评测记录与未修项见 docs/design-review.md。
+     ============================================================ */
+  /* CJK 用工程自带、可再分发的 HarmonyOS Sans SC（仓库主人 2026-09-21 裁定）：
+     拉丁展示轨仍需"极窄/极宽"的人格，暂时用平台字体（Bahnschrift → Arial Narrow），
+     CJK 落到这一族。同目录 fonts/ 是范本唯一的同级依赖，加载失败也只是回退微软雅黑。 */
+  @font-face {
+    font-family: "HarmonyOS Sans SC";
+    src: url("fonts/HarmonyOS_Sans_SC_Regular.woff2") format("woff2");
+    font-weight: 400; font-style: normal; font-display: swap;
+  }
+  @font-face {
+    font-family: "HarmonyOS Sans SC";
+    src: url("fonts/HarmonyOS_Sans_SC_Bold.woff2") format("woff2");
+    font-weight: 700; font-style: normal; font-display: swap;
+  }
+  :root {
+    /* 色板：全部取自 ark-ui.tokens.json 的 ark 主题，不做装饰性派生 */
+    --bg: #080a0b;                                /* token: ink（本范本的底色） */
+    --ink: #f4f6f6;                               /* token: paper（本范本的正文白） */
+    --signal: #18d1ff;                            /* token: signal —— 唯一强调色 */
+    --state: #c8eb21;                             /* token: state —— 只给完成/在线态 */
+    --muted: #8d9396;                             /* token: muted */
+    --on-signal: #04252c;                         /* 青底上的深色字（填充主操作专用） */
+    --rule: rgba(244, 246, 246, 0.14);            /* 1px 弱线：只做分隔 */
+    --rule-strong: rgba(244, 246, 246, 0.32);     /* 1px 强边：面板表头 */
+    --rule-control: rgba(244, 246, 246, 0.40);    /* 可点控件的边界，实测 ≥3:1 */
+    --panel: rgba(8, 10, 11, 0.82);               /* token: panel */
+
+    /* 字体：展示轨优先 Bahnschrift（DIN 系，Windows/WebView2 自带，本机已确认存在），
+       回退 Arial Narrow；CJK 落到随包的 HarmonyOS Sans SC（见上面的 @font-face）。 */
+    --font-display: "Bahnschrift SemiCondensed", "Bahnschrift Condensed", "Bahnschrift",
+                    "Arial Narrow", "Roboto Condensed", "DIN Condensed",
+                    "HarmonyOS Sans SC", sans-serif;
+    --font-tech: "Space Grotesk", "IBM Plex Sans", "HarmonyOS Sans SC", system-ui, "Segoe UI", sans-serif;
+    --font-cjk: "HarmonyOS Sans SC", "Noto Sans SC", "Source Han Sans SC", "Microsoft YaHei", "PingFang SC", sans-serif;
+    --font-mono: "IBM Plex Mono", "SFMono-Regular", Consolas, monospace;
+    --ease: cubic-bezier(.22, .8, .2, 1);
+
+    /* 字号只有这几档：10 微标签 · 11.5 数据 · 13 正文与控件 · 18 面板标题 ·
+       22 步骤号 · 34–54 舞台标题 · 190 锚点。中间尺寸的填充物一律不给。 */
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--font-tech);
+    font-size: 13px;
+    display: grid;
+    grid-template-columns: 72px minmax(0, 1fr) 336px;
+    grid-template-rows: 56px minmax(0, 1fr) auto;
+    grid-template-areas:
+      "top top top"
+      "rail stage dossier"
+      "base base base";
+    height: 100vh;
+    overflow: hidden;
+  }
+
+  /* ---------- 微标签语法：全大写 + 开放字距 + tabular ---------- */
+  .micro {
+    font-family: var(--font-tech);
+    font-size: 10px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+  }
+  .mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+  .display {
+    font-family: var(--font-display);
+    text-transform: uppercase;
+    line-height: 0.88;
+    letter-spacing: -0.02em;
+    font-weight: 700;
+  }
+
+  /* ---------- 顶栏：黑色边缘壳 ---------- */
+  .topbar {
+    grid-area: top;
+    display: flex;
+    align-items: stretch;
+    border-bottom: 1px solid var(--rule);
+    background: #050607;
+    user-select: none;
+    min-height: 56px;
+  }
+  .topbar > * { display: flex; align-items: center; }
+  .brand { padding: 0 20px; border-right: 1px solid var(--rule); gap: 10px; }
+  .brand .wordmark {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 19px;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+  }
+  .brand .sub { color: var(--muted); }
+  .task {
+    padding: 0 20px;
+    gap: 14px;
+    border-right: 1px solid var(--rule);
+    flex: 1;
+    min-width: 0;
+  }
+  .task .code {
+    font-size: 13px; letter-spacing: 0.06em;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .task .cjk { font-family: var(--font-cjk); color: var(--muted); font-size: 13px; white-space: nowrap; }
+  .topbar .spacer { flex: 1; }
+  .linkstat { gap: 8px; padding: 0 18px; border-left: 1px solid var(--rule); }
+  .linkstat .dot { width: 7px; height: 7px; background: var(--state); display: inline-block; }
+  .linkstat .micro { color: var(--state); }
+  .elapsed { padding: 0 18px; border-left: 1px solid var(--rule); gap: 8px; }
+  .elapsed .mono { font-size: 13px; }
+  .regseg {
+    border-left: 1px solid var(--rule);
+    display: flex;
+    align-items: stretch;
+  }
+  .regseg button {
+    appearance: none; background: none; border: none;
+    color: var(--muted); cursor: pointer;
+    font-family: var(--font-tech); font-size: 10px;
+    letter-spacing: 0.16em; text-transform: uppercase;
+    padding: 0 16px; min-height: 44px;
+    transition: background-color 240ms var(--ease), color 240ms var(--ease);
+  }
+  .regseg button:hover { color: var(--ink); }
+  .regseg button[aria-pressed="true"] {
+    color: var(--bg); background: var(--ink);
+  }
+  html[data-expert="true"] .regseg button[aria-pressed="true"] { background: var(--signal); color: var(--on-signal); }
+  .demo-flag { padding: 0 18px; border-left: 1px solid var(--rule); gap: 12px; }
+  .demo-flag .micro { color: var(--muted); }
+  /* 范本的状态条：只属于视觉演示，不是产品的一部分（产品里没有"切换状态"这个控件） */
+  .seg-demo { display: flex; align-items: stretch; }
+  .seg-demo button {
+    appearance: none; background: none; border: none; cursor: pointer;
+    color: var(--muted);
+    font-family: var(--font-tech); font-size: 10px;
+    letter-spacing: 0.12em; text-transform: uppercase;
+    padding: 6px 8px;
+    transition: color 240ms var(--ease), background-color 240ms var(--ease);
+  }
+  .seg-demo button:hover { color: var(--ink); }
+  .seg-demo button[aria-pressed="true"] { color: var(--bg); background: var(--ink); }
+
+  /* ---------- 左轨：边缘导航。OPERATOR 下是读数，不是导航（照真产品） ---------- */
+  .rail {
+    grid-area: rail;
+    border-right: 1px solid var(--rule);
+    display: flex; flex-direction: column; align-items: stretch;
+    background: #050607;
+  }
+  .rail .mark {
+    min-height: 56px; display: flex; align-items: center; justify-content: center;
+    border-bottom: 1px solid var(--rule);
+    font-family: var(--font-display); font-weight: 700; font-size: 13px;
+    letter-spacing: 0.22em;
+  }
+  .rail .item {
+    position: relative;
+    display: flex; flex-direction: column; align-items: center; gap: 14px;
+    padding: 22px 0 18px;
+    color: var(--muted); background: none; border: none; border-bottom: 1px solid var(--rule);
+    /* 范本没有第二个视图，所以它不假装能点：cursor 与 aria-disabled 都按"读数"来 */
+    cursor: default;
+    transition: color 240ms var(--ease);
+  }
+  html[data-expert="false"] .rail .item[data-nav] { pointer-events: none; }
+  .rail .item .idx {
+    font-family: var(--font-display); font-weight: 700; font-size: 13px;
+    letter-spacing: 0.06em;
+  }
+  .rail .item .lbl {
+    writing-mode: vertical-rl;
+    font-size: 10px; letter-spacing: 0.22em; text-transform: uppercase;
+    font-family: var(--font-tech);
+  }
+  .rail .item[aria-current="true"] { color: var(--ink); }
+  .rail .item[aria-current="true"]::before {
+    content: ""; position: absolute; left: 0; top: 0; bottom: 0;
+    width: 3px; background: var(--signal);
+    animation: stripIn 650ms var(--ease) both;
+  }
+  .rail .grow { flex: 1; border-bottom: 1px solid var(--rule); }
+  .rail .new { color: var(--muted); }
+
+  /* ---------- 舞台：当前操作（本屏唯一主角） ---------- */
+  .stage {
+    grid-area: stage;
+    position: relative;
+    overflow: hidden;
+    display: grid;
+    grid-template-rows: auto auto minmax(0, 1fr) auto;
+    padding: 34px 40px 26px;
+    gap: 18px;
+    background-color: var(--bg);
+    /* 点阵 + 青色工程网格：参考图舞台的底纹，两条线不承载任何数据 */
+    background-image:
+      radial-gradient(rgba(244, 246, 246, 0.05) 1px, transparent 1px),
+      linear-gradient(rgba(24, 209, 255, 0.045) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(24, 209, 255, 0.045) 1px, transparent 1px);
+    background-size: 24px 24px, 96px 96px, 96px 96px;
+  }
+  /* 蓝图线框层：参考图里舞台必有的构造线，纯装饰、aria-hidden */
+  .wire {
+    position: absolute; inset: 0; width: 100%; height: 100%;
+    stroke: rgba(24, 209, 255, 0.15); stroke-width: 1; fill: none;
+    pointer-events: none;
+  }
+  /* 角括号：只给舞台 */
+  .stage .corner { position: absolute; width: 18px; height: 18px; pointer-events: none; }
+  .stage .corner::before, .stage .corner::after { content: ""; position: absolute; background: var(--rule-strong); }
+  .stage .corner::before { width: 100%; height: 1px; }
+  .stage .corner::after { width: 1px; height: 100%; }
+  .stage .c-tl { top: 14px; left: 14px; }
+  .stage .c-tr { top: 14px; right: 14px; transform: scaleX(-1); }
+  .stage .c-bl { bottom: 14px; left: 14px; transform: scaleY(-1); }
+  .stage .c-br { bottom: 14px; right: 14px; transform: scale(-1); }
+
+  .stage-head { position: relative; z-index: 2; }
+  .stage-head .phase-tag { color: var(--signal); display: flex; align-items: center; gap: 10px; }
+  .stage-head .phase-tag::before { content: ""; width: 34px; height: 2px; background: var(--signal); }
+  .stage-head h1 {
+    font-family: var(--font-display);
+    font-weight: 700; font-size: clamp(34px, 4.6vw, 54px);
+    text-transform: uppercase; line-height: 0.9; letter-spacing: -0.02em;
+    margin: 10px 0 12px;
+  }
+  /* 家族签名：标题第二行只描边不填充（参考图三张一致） */
+  .stage-head h1 .hollow {
+    display: block;
+    color: transparent;
+    -webkit-text-stroke: 1px rgba(244, 246, 246, 0.8);
+  }
+  @supports not (-webkit-text-stroke: 1px black) {
+    .stage-head h1 .hollow { color: var(--ink); }
+  }
+  .stage-head .meta { display: flex; gap: 22px; flex-wrap: wrap; }
+  .stage-head .meta .mono { font-size: 11.5px; color: var(--muted); }
+  .stage-head .meta .mono b { color: var(--ink); font-weight: 400; }
+
+  /* 超大锚点：停滞读数。缺席即内容。全屏只有这一个"巨大数字" */
+  .counter {
+    position: relative; z-index: 2;
+    display: flex; align-items: flex-end; gap: 18px; flex-wrap: wrap;
+  }
+  .counter .num {
+    font-family: var(--font-display); font-weight: 700;
+    font-size: clamp(96px, 15vw, 190px);
+    line-height: 0.82; letter-spacing: -0.04em;
+    font-variant-numeric: tabular-nums;
+  }
+  .counter .unit {
+    font-family: var(--font-display); font-weight: 700;
+    font-size: 16px; color: var(--muted); line-height: 1;
+    padding-bottom: 14px;
+  }
+  .counter .verdict { padding-bottom: 16px; display: grid; gap: 8px; }
+  .counter .verdict .line1 { display: flex; align-items: center; gap: 10px; }
+  /* 未解决态的呼吸块：本屏唯一常驻环境动效。只有"卡住"和"等你裁决"才算未解决 */
+  .counter .breath {
+    width: 26px; height: 12px; background: var(--signal);
+    animation: none; opacity: 0.4;
+  }
+  html[data-state="stalled"] .counter .breath,
+  html[data-state="approval"] .counter .breath {
+    animation: breathe 2s ease-in-out infinite; opacity: 1;
+  }
+  /* 链路断掉：绿点退回中性——那是"不在线"，不是"校验通过"，酸绿不许顶这个班 */
+  html[data-state="lost"] .linkstat .dot { background: var(--muted); }
+  html[data-state="lost"] .linkstat .micro { color: var(--muted); }
+  .counter .verdict .v-word {
+    font-family: var(--font-display); font-weight: 700; font-size: 13px;
+    letter-spacing: 0.16em; text-transform: uppercase; color: var(--signal);
+  }
+  .counter .verdict .v-sub { font-size: 11.5px; color: var(--muted); letter-spacing: 0.06em; }
+
+  /* 输出馈送：静默前的最后几行 */
+  .feed {
+    position: relative; z-index: 2;
+    min-height: 0;
+    display: flex; flex-direction: column;
+    font-family: var(--font-mono); font-size: 12.5px;
+    color: var(--muted);
+  }
+  /* 只有日志段参与收缩，且它自己滚动（照真产品 .stage-main 的做法）。
+     装不下就滚，不裁也不渐隐：硬裁会把最后一行切成半个字，渐隐会把它调暗——
+     两种都是"遮字"。SUSPENDED 那句在外面，永远满亮度。 */
+  .feed-lines {
+    flex: 1 1 auto; min-height: 0;
+    overflow-y: auto; overscroll-behavior: contain;
+    scrollbar-width: thin; scrollbar-color: var(--rule-strong) transparent;
+    display: flex; flex-direction: column; gap: 7px;
+  }
+  .feed-lines::-webkit-scrollbar { width: 8px; }
+  .feed-lines::-webkit-scrollbar-thumb { background: var(--rule-strong); }
+  .feed .ln b { color: var(--ink); font-weight: 400; }
+  .feed .ln .hit { color: var(--ink); }
+  /* 当前工具那一行：舞台标题已经还给任务主题，工具身份住在这里 */
+  .feed .ln.tool { color: var(--signal); }
+  .feed .suspend {
+    flex: 0 0 auto;
+    margin-top: 8px; padding-top: 8px;
+    border-top: 1px solid var(--rule);
+    color: var(--signal);
+    letter-spacing: 0.16em; font-size: 11.5px;
+  }
+  .feed .suspend::before { content: "— "; color: var(--muted); }
+  .feed .suspend::after { content: " —"; color: var(--muted); }
+
+  /* 信号时间线：60s 窗口，缺口即静默（"卡了多久"的物理读数） */
+  .timeline {
+    position: relative; z-index: 2; display: grid; gap: 8px;
+    /* LAST · tool.started 这行标签挂在轨道上方，必须落在本元素的边框盒之内：
+       进场动画的 clip-path 是按元素的边框盒裁的，框外的字会被切掉（旧的永久裁切就出在这）。
+       负 margin 把这块空间从上方"借"来，不占馈送的高度——否则等于从馈送身上抠走 22px。 */
+    padding-top: 22px;
+    margin-top: -22px;
+  }
+  .tl-track {
+    position: relative; height: 34px;
+    border-left: 1px solid var(--rule-strong);
+    border-right: 1px solid var(--rule-strong);
+    background: linear-gradient(var(--rule) 1px, transparent 1px) 0 100% / 100% 1px;
+  }
+  .tl-ev {
+    position: absolute; bottom: 0; width: 2px; height: 12px;
+    background: var(--ink); opacity: 0.55;
+  }
+  .tl-last {
+    position: absolute; bottom: 0; width: 2px; height: 22px;
+    background: var(--signal);
+  }
+  .tl-last::after {
+    content: "LAST · tool.started";
+    position: absolute; bottom: 26px; left: 6px; white-space: nowrap;
+    font-family: var(--font-mono); font-size: 10px; color: var(--signal);
+    letter-spacing: 0.06em;
+  }
+  .tl-gap {
+    position: absolute; top: 0; bottom: 0;
+    background: repeating-linear-gradient(-45deg, rgba(244,246,246,0.05) 0 5px, transparent 5px 10px);
+    border-left: 1px dashed rgba(24, 209, 255, 0.35);
+  }
+  .tl-gap::after {
+    content: "NO SIGNAL";
+    position: absolute; top: 4px; right: 8px;
+    font-family: var(--font-tech); font-size: 10px;
+    letter-spacing: 0.16em; color: rgba(24, 209, 255, 0.82);
+  }
+  .tl-ends { display: flex; justify-content: space-between; }
+  .expert-only { display: none; }
+  html[data-expert="true"] .expert-only { display: block; }
+  .tl-expert { margin-top: 2px; }
+
+  /* ---------- 档案栏：一条强边 + 表头代码，无四面框。三个问题 ---------- */
+  .dossier {
+    grid-area: dossier;
+    border-left: 1px solid var(--rule);
+    background: var(--panel);
+    display: flex; flex-direction: column;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--rule-strong) transparent;
+  }
+  .dossier::-webkit-scrollbar { width: 8px; }
+  .dossier::-webkit-scrollbar-thumb { background: var(--rule-strong); }
+  .blk { padding: 20px 22px 18px; border-bottom: 1px solid var(--rule); }
+  .blk .head { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+  .blk .head .code { color: var(--ink); }
+  .blk.strong { border-left: 2px solid var(--rule-strong); }
+  .blk.alert { border-left: 2px solid var(--signal); }
+  .blk .big {
+    font-family: var(--font-display); font-weight: 700;
+    font-size: 18px; line-height: 0.95; text-transform: uppercase;
+  }
+  .blk .kv { display: grid; gap: 6px; margin-top: 12px; }
+  .blk .kv .row { display: flex; justify-content: space-between; gap: 12px; }
+  .blk .kv .row .k {
+    font-size: 10px; letter-spacing: 0.16em; text-transform: uppercase;
+    color: var(--muted); white-space: nowrap;
+  }
+  .blk .kv .row .v { font-family: var(--font-mono); font-size: 11.5px; text-align: right; overflow-wrap: anywhere; }
+  .blk .goal { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--rule); }
+  .blk .goal .cjk { font-family: var(--font-cjk); font-size: 13px; line-height: 1.7; color: var(--ink); }
+  .blk .reason {
+    margin-top: 10px; font-family: var(--font-mono); font-size: 11.5px;
+    color: var(--muted); letter-spacing: 0.06em;
+  }
+  .dossier .sess { margin-top: auto; padding: 16px 22px; border-top: 1px solid var(--rule); }
+  .dossier .sess .kv { display: grid; gap: 6px; }
+  .dossier .sess .row { display: flex; justify-content: space-between; gap: 12px; }
+  .dossier .sess .k { font-size: 10px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--muted); white-space: nowrap; }
+  .dossier .sess .v { font-family: var(--font-mono); font-size: 11.5px; text-align: right; }
+
+  /* ---------- 底部基线：两行。上行步骤带，下行 动作组 + 模式组 + 指令坞 + 发送 ---------- */
+  .baseline {
+    grid-area: base;
+    border-top: 1px solid var(--rule);
+    display: grid;
+    grid-template-columns: auto auto minmax(180px, 1fr) auto;
+    background: #050607;
+  }
+  .steps {
+    grid-column: 1 / -1;
+    list-style: none;
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(190px, 1fr);
+    overflow-x: auto;
+    border-bottom: 1px solid var(--rule);
+  }
+  .step {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    grid-template-rows: auto auto;
+    column-gap: 14px;
+    align-content: center;
+    padding: 14px 18px 16px;
+    border-right: 1px solid var(--rule);
+    position: relative;
+  }
+  /* 编号与名字共用一条基线，读数另起一行：这个是 §七.1 的"格内基线"修法 */
+  .step .n {
+    grid-area: 1 / 1; align-self: baseline;
+    font-family: var(--font-display); font-weight: 700; font-size: 22px;
+    line-height: 1; color: var(--muted); font-variant-numeric: tabular-nums;
+  }
+  .step .name {
+    grid-area: 1 / 2; align-self: baseline;
+    font-size: 11.5px; letter-spacing: 0.12em; text-transform: uppercase;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .step .stat {
+    grid-area: 2 / 2;
+    font-family: var(--font-mono); font-size: 11.5px; color: var(--muted);
+    margin-top: 6px; white-space: nowrap;
+  }
+  .step.done .n { color: var(--state); }
+  .step.done .stat { color: var(--state); }
+  .step.active {
+    background: rgba(24, 209, 255, 0.05);
+    clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 14px, 100% 100%, 0 100%);
+    border-right: none;
+  }
+  .step.active .n { color: var(--signal); }
+  .step.active .name { color: var(--ink); }
+  .step.active .stat { color: var(--signal); }
+  .step.active::after {
+    content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 2px;
+    background: var(--signal);
+    animation: none; opacity: 0.45;
+  }
+  /* 活动格下划线脉冲只给"正在等信号"的状态：等不到的东西才需要心跳 */
+  html[data-state="stalled"] .step.active::after {
+    animation: underlinePulse 2.2s ease-in-out infinite; opacity: 1;
+  }
+
+  .actions { display: flex; align-items: stretch; }
+  .modes { display: flex; align-items: stretch; border-left: 1px solid var(--rule); }
+  /* 动作是状态，不是配置：空闲时这一格是空的（见 script 里的 paintActions） */
+  .actions button, .modes button {
+    appearance: none; border: none; cursor: pointer;
+    font-family: var(--font-display); font-weight: 700;
+    font-size: 13px; letter-spacing: 0.16em; text-transform: uppercase;
+    padding: 0 20px; min-height: 48px;
+    transition: background-color 240ms var(--ease), color 240ms var(--ease);
+  }
+  .actions button { border-left: 1px solid var(--rule); background: var(--signal); color: var(--on-signal); }
+  .actions button:hover { background: var(--ink); color: var(--bg); }
+  .modes button { background: none; color: var(--muted); }
+  .modes button:hover { color: var(--ink); }
+  /* 选中态是一次"擦入"：颜色写在终态上，动画只负责过程，reduced-motion 下留着终态 */
+  .modes button[aria-pressed="true"] {
+    color: var(--on-signal);
+    background-image: linear-gradient(var(--signal), var(--signal));
+    background-repeat: no-repeat;
+    background-position: left center;
+    background-size: 100% 100%;
+    animation: commitWipe 260ms var(--ease) both;
+  }
+  .cmd {
+    display: flex; align-items: center; gap: 12px;
+    border-left: 1px solid var(--rule);
+    padding: 0 18px; min-width: 0;
+  }
+  .cmd .prompt-char { color: var(--signal); font-family: var(--font-mono); font-size: 13px; }
+  .cmd input {
+    flex: 1; min-width: 0;
+    background: none; border: none; outline: none;
+    color: var(--ink); font-family: var(--font-mono); font-size: 13px;
+    caret-color: var(--signal);
+  }
+  .cmd input::placeholder { color: var(--muted); letter-spacing: 0.12em; }
+  .send {
+    appearance: none; background: none; cursor: pointer;
+    align-self: center;
+    margin: 0 16px;
+    border: 1px solid var(--rule-control);
+    color: var(--ink);
+    font-family: var(--font-tech); font-size: 10px; letter-spacing: 0.16em;
+    padding: 10px 18px;
+    transition: border-color 240ms var(--ease), color 240ms var(--ease);
+  }
+  .send:hover { border-color: var(--signal); color: var(--signal); }
+
+  /* ---------- 动效：揭示层级 / 呼吸 / 脉冲 / 擦入 ---------- */
+  @keyframes reveal {
+    from { clip-path: inset(0 100% 0 0); transform: translateX(-10px); }
+    to   { clip-path: inset(0 0 0 0);     transform: translateX(0); }
+  }
+  @keyframes stripIn { from { transform: scaleY(0); } to { transform: scaleY(1); } }
+  @keyframes breathe { 0%, 100% { opacity: 0.35; } 50% { opacity: 1; } }
+  @keyframes underlinePulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
+  @keyframes commitWipe { from { background-size: 0% 100%; } to { background-size: 100% 100%; } }
+  /* fill-mode 用 backwards 而不是 both：进场前保持"未揭示"的初态，动画结束后把
+     clip-path 交还给元素本身，不留一个永久的裁剪框（那会切掉任何溢出边框盒的内容）。 */
+  .stage-head, .counter, .feed, .timeline { animation: reveal 650ms var(--ease) backwards; }
+  .counter { animation-delay: 90ms; }
+  .feed { animation-delay: 170ms; }
+  .timeline { animation-delay: 240ms; }
+  .dossier .blk { animation: reveal 520ms var(--ease) backwards; }
+  .dossier .blk:nth-child(2) { animation-delay: 120ms; }
+  .dossier .blk:nth-child(3) { animation-delay: 210ms; }
+
+  /* ---------- 焦点可见：环画在控件外（offset +2），填充色底下也看得见 ---------- */
+  button:focus-visible, input:focus-visible {
+    outline: 2px solid var(--signal); outline-offset: 2px;
+  }
+  /* 满格控件（顶栏语域）把环画在格内，用自身文字色，免得被视口边缘吃掉 */
+  .regseg button:focus-visible { outline-offset: -3px; outline-color: currentColor; }
+  .cmd input:focus-visible { outline-offset: -2px; }
+
+  /* ---------- 降级 ---------- */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation: none !important; transition: none !important; }
+  }
+
+  /* ---------- 窄窗口：舞台在上，档案在下；指令坞钉在底部，不能滚出屏幕 ---------- */
+  @media (max-width: 960px) {
+    body {
+      grid-template-columns: 1fr;
+      grid-template-rows: auto 48px minmax(0, 1fr) auto auto;
+      grid-template-areas: "top" "rail" "stage" "dossier" "base";
+      overflow: visible; height: auto; min-height: 100vh;
+    }
+    .rail { flex-direction: row; border-right: none; border-bottom: 1px solid var(--rule); }
+    .rail .mark { display: none; }
+    .rail .item { flex-direction: row; border-bottom: none; border-right: 1px solid var(--rule); padding: 12px 16px; gap: 8px; }
+    .rail .item .lbl { writing-mode: horizontal-tb; }
+    .rail .grow { display: none; }
+    .dossier { border-left: none; border-top: 1px solid var(--rule); }
+    .baseline { position: sticky; bottom: 0; z-index: 3; }
+    .step { min-width: 190px; }
+    .actions button, .modes button { padding: 0 14px; }
+  }
+
+  /* ---------- 手机宽：顶栏折两行，什么都不丢 ---------- */
+  @media (max-width: 700px) {
+    .topbar { flex-wrap: wrap; }
+    .topbar > * { min-height: 44px; }
+    .brand { padding: 0 14px; border-right: none; }
+    .brand .sub { display: none; }
+    .task { flex: 1 1 120px; padding: 0 14px; border-right: none; }
+    .task .code { display: none; }
+    .topbar .spacer { display: none; }
+    .linkstat { margin-left: auto; padding: 0 12px; }
+    .elapsed { padding: 0 12px; }
+    .regseg button { padding: 0 12px; }
+    .demo-flag { padding: 0 12px; }
+    .stage { padding: 22px 18px 18px; gap: 14px; }
+    .stage-head h1 { font-size: clamp(28px, 9vw, 40px); }
+    .counter { gap: 12px; }
+    .counter .num { font-size: clamp(84px, 26vw, 150px); }
+    .counter .verdict { padding-bottom: 10px; }
+    .actions button, .modes button { padding: 0 10px; letter-spacing: 0.12em; }
+    .cmd { padding: 0 12px; }
+    .send { margin: 0 10px; padding: 10px 12px; }
+  }
+</style>
+</head>
+<body>
+
+  <!-- 顶栏 -->
+  <header class="topbar">
+    <div class="brand">
+      <span class="wordmark">T3RRA</span>
+      <span class="micro sub">PROTOCOL</span>
+    </div>
+    <div class="task">
+      <span class="code">CSS TOKEN EXTRACTION · T-013</span>
+      <span class="cjk">主题令牌抽取</span>
+    </div>
+    <div class="spacer"></div>
+    <div class="linkstat"><span class="dot" aria-hidden="true"></span><span class="micro" id="linkLabel">LINK OK</span></div>
+    <div class="elapsed"><span class="micro">ELAPSED</span><span class="mono" id="elapsed">00:01:05</span></div>
+    <div class="regseg" role="group" aria-label="register">
+      <button type="button" id="regOperator" aria-pressed="true">OPERATOR</button>
+      <button type="button" id="regExpert" aria-pressed="false">EXPERT</button>
+    </div>
+    <div class="demo-flag" title="静态视觉范本：状态条只用来把边界态摆出来看；Esc 触发 HALT，SEND 重新武装">
+      <span class="micro">VISUAL DEMO</span>
+      <div class="seg-demo" id="stateSwitch" role="group" aria-label="specimen state">
+        <button type="button" data-state-key="stalled" aria-pressed="true">STALLED</button>
+        <button type="button" data-state-key="idle" aria-pressed="false">IDLE</button>
+        <button type="button" data-state-key="lost" aria-pressed="false">LOST</button>
+        <button type="button" data-state-key="approval" aria-pressed="false">APPROVAL</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- 左轨 -->
+  <nav class="rail" aria-label="views">
+    <div class="mark">T3</div>
+    <button type="button" class="item" data-nav aria-current="true" aria-disabled="true" title="范本未实现视图切换">
+      <span class="idx">01</span><span class="lbl">PROCESS</span>
+    </button>
+    <button type="button" class="item" data-nav aria-disabled="true" title="范本未实现视图切换">
+      <span class="idx">02</span><span class="lbl">EVENTS</span>
+    </button>
+    <div class="grow"></div>
+    <button type="button" class="item new" aria-disabled="true" title="范本未实现会话切换">
+      <span class="lbl">NEW</span>
+    </button>
+  </nav>
+
+  <!-- 舞台：正在卡死的扫描 -->
+  <main class="stage">
+    <span class="corner c-tl" aria-hidden="true"></span><span class="corner c-tr" aria-hidden="true"></span>
+    <span class="corner c-bl" aria-hidden="true"></span><span class="corner c-br" aria-hidden="true"></span>
+    <svg class="wire" viewBox="0 0 900 600" preserveAspectRatio="none" aria-hidden="true">
+      <polyline points="120,120 620,60 700,300 300,420 120,120" />
+      <polyline points="120,120 300,420" />
+      <polyline points="620,60 700,300" />
+    </svg>
+
+    <div class="stage-head">
+      <div class="micro phase-tag" id="eyebrow">[ 03 // ACTIVE ]</div>
+      <h1>主题令牌抽取 <span class="hollow">CSS Token Extraction</span></h1>
+      <div class="meta">
+        <span class="mono">TARGET <b>src/**/*.css</b></span>
+        <span class="mono">SESSION <b>01a0ba56</b> · TURN <b>01</b></span>
+      </div>
+    </div>
+
+    <div class="counter">
+      <span class="num" id="anchor">47</span>
+      <span class="unit" id="anchorUnit">s</span>
+      <div class="verdict">
+        <div class="line1">
+          <span class="breath" aria-hidden="true"></span>
+          <span class="v-word" id="verdict" aria-live="polite">Stalled</span>
+        </div>
+        <div class="v-sub mono" id="compare">USUALLY 1.2s · ×39</div>
+      </div>
+    </div>
+
+    <div class="feed" aria-label="tool output">
+      <div class="feed-lines">
+        <div class="ln tool">▶ bash <b>HARDCODED COLOR SCAN</b></div>
+        <div class="ln">$ grep -rn --include=*.css -E '#[0-9a-fA-F]{3,8}' src/</div>
+        <div class="ln">src/theme/<b>_legacy.css:12</b> <span class="hit">background:#1e6fff</span></div>
+        <div class="ln">src/theme/<b>_legacy.css:27</b> <span class="hit">color:#333</span></div>
+        <div class="ln">src/dashboard/<b>shell.css:8</b> <span class="hit">border-color:#00c8ff</span></div>
+        <div class="ln">src/dashboard/<b>shell.css:41</b> <span class="hit">color:#888</span></div>
+      </div>
+      <div class="suspend" id="suspend">OUTPUT SUSPENDED</div>
+    </div>
+
+    <div class="timeline">
+      <div class="tl-track" role="img" aria-label="signal timeline, 60 second window: five events, then no signal">
+        <i class="tl-ev" aria-hidden="true" data-age="56.4"></i>
+        <i class="tl-ev" aria-hidden="true" data-age="54.6"></i>
+        <i class="tl-ev" aria-hidden="true" data-age="52.8"></i>
+        <i class="tl-ev" aria-hidden="true" data-age="51.6"></i>
+        <i class="tl-ev" aria-hidden="true" data-age="49.8"></i>
+        <i class="tl-last" aria-hidden="true" data-age="47"></i>
+        <i class="tl-gap" id="tlGap" aria-hidden="true" style="left: 21.7%; right: 0"></i>
+      </div>
+      <div class="tl-ends">
+        <span class="micro">T-60s</span>
+        <span class="expert-only micro tl-expert">EVENTS 89 · UNMAPPED 3 · SCHEMA 0.3.0</span>
+        <span class="micro">NOW</span>
+      </div>
+    </div>
+  </main>
+
+  <!-- 档案栏：三个问题（DOING / STUCK / NEEDS YOU），对应真产品的 Process / Signal / Operator Action -->
+  <aside class="dossier">
+    <section class="blk strong">
+      <div class="head"><span class="micro code">[ 04 // DOING ]</span><span class="micro">PROCESS</span></div>
+      <div class="big" id="doing">Running bash</div>
+      <div class="kv" id="doingRows">
+        <div class="row"><span class="k">PHASE</span><span class="v">TOOLING</span></div>
+        <div class="row"><span class="k">TARGET</span><span class="v">src/**/*.css</span></div>
+      </div>
+      <div class="goal">
+        <div class="micro" style="margin-bottom:6px">FROM YOUR INSTRUCTION</div>
+        <div class="cjk">把 dashboard 的主题令牌抽成公共设计语言，并同步进生产项目。</div>
+      </div>
+    </section>
+
+    <section class="blk alert">
+      <div class="head"><span class="micro code">[ 05 // STUCK ]</span><span class="micro">SIGNAL</span></div>
+      <div class="big" id="stuck">Stalled</div>
+      <div class="kv" id="stuckRows">
+        <div class="row"><span class="k">USUALLY</span><span class="v">1.2s</span></div>
+        <div class="row"><span class="k">LAST SIGN</span><span class="v">tool.started</span></div>
+        <div class="row"><span class="k">STALLS AT</span><span class="v">×25</span></div>
+      </div>
+    </section>
+
+    <section class="blk">
+      <div class="head"><span class="micro code">[ 06 // NEEDS YOU ]</span><span class="micro">OPERATOR ACTION</span></div>
+      <div class="big" id="needs" aria-live="polite">Nothing for 47s</div>
+      <div class="reason" id="needsReason">LAST SIGN tool.started · ×39 OF USUAL GAP</div>
+    </section>
+
+    <div class="sess">
+      <div class="kv">
+        <div class="row"><span class="k">SESSION</span><span class="v">01a0ba56 · TURN 01</span></div>
+        <div class="row"><span class="k">SOURCE</span><span class="v">acp · omp 18.2.6</span></div>
+        <div class="row"><span class="k">MODEL</span><span class="v">xiaomi/mimo-v2.5</span></div>
+        <div class="row expert-only"><span class="k">EVENTS</span><span class="v">89 · UNMAPPED 3</span></div>
+        <div class="row expert-only"><span class="k">SCHEMA</span><span class="v">0.3.0</span></div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- 底部基线：步骤带 + 指令坞 + 动作组 -->
+  <footer class="baseline">
+    <ol class="steps" aria-label="process steps">
+      <li class="step done" data-state="done">
+        <span class="n">01</span>
+        <span class="name">CSS Variable Scan</span>
+        <span class="stat">7 MATCHES · 1.2s · ✓</span>
+      </li>
+      <li class="step done" data-state="done">
+        <span class="n">02</span>
+        <span class="name">Token Write</span>
+        <span class="stat">14 TOKENS · 43 REFS · ✓</span>
+      </li>
+      <li class="step active" id="stepActive" data-state="running" aria-current="step">
+        <span class="n">03</span>
+        <span class="name">Hardcoded Color Scan</span>
+        <span class="stat" id="stepStat">NO SIGNAL · 47s</span>
+      </li>
+    </ol>
+    <div class="actions" id="surface-actions">
+      <button type="button" id="haltbtn">▶ HALT</button>
+    </div>
+    <div class="modes" id="modes" role="group" aria-label="command mode">
+      <button type="button" data-mode="ask" aria-pressed="false">ASK</button>
+      <button type="button" data-mode="do" aria-pressed="true">DO</button>
+      <button type="button" data-mode="plan" aria-pressed="false">PLAN</button>
+    </div>
+    <label class="cmd">
+      <span class="prompt-char" aria-hidden="true">&gt;</span>
+      <input type="text" id="prompt" placeholder="RUNNING · ESC TO HALT" aria-label="command input">
+    </label>
+    <button type="button" class="send" id="sendbtn">SEND ↵</button>
+  </footer>
+
+<script>
+  // 极小演示脚本。它不生成任何"运行时内容"——只把范本自带的读数按状态摆好。
+  // 无 fetch、无外部依赖。
+  //
+  // 状态表：一个事实只有一个主人。文案取自真产品 t3rra-core：
+  //   判据与档位名  src/view/derive.ts（×8 算 slow、×25 算 stalled、10 分钟只是兜底）
+  //   句子与语域    src/ui/console.ts（QUIET / NOTHING FOR Ns / SILENCE NOT MEANINGFUL）
+  //   动作与占位符  src/ui/dock.ts（▶ HALT / ◎ APPROVE / ✕ DENY / RUNNING · ESC TO HALT）
+  // 范本没有真实事件流，所以数值是"演示用读数"——形状照产品，值由范本自己给。
+  var USUAL = 1.2;      // 当前相位的实测中位间隔（秒）
+  var STALLS_AT = 25;   // 停滞阈值 ×25
+  var WINDOW = 60;      // 信号时间线窗口（秒）
+
+  var STATES = {
+    stalled: {
+      link: "LINK OK", base: 47, ticks: true,
+      eyebrow: "[ 03 // ACTIVE ]", anchor: "{s}", unit: "s",
+      verdict: "Stalled", compare: "USUALLY 1.2s · ×{ratio}",
+      suspend: "OUTPUT SUSPENDED",
+      step: "NO SIGNAL", stepNum: "{s}", stepActive: true,
+      doing: "Running bash",
+      doingRows: [["PHASE", "TOOLING"], ["TARGET", "src/**/*.css"]],
+      stuck: "Stalled",
+      stuckRows: [["USUALLY", "1.2s"], ["LAST SIGN", "tool.started"], ["STALLS AT", "×{stallsAt}"]],
+      needs: "Nothing for {s}s",
+      needsReason: "LAST SIGN tool.started · ×{ratio} OF USUAL GAP",
+      actions: [["▶ HALT", true]],
+      placeholder: "RUNNING · ESC TO HALT"
+    },
+    halted: {
+      link: "LINK OK", base: 47, ticks: false,
+      eyebrow: "[ 03 // HALTED ]", anchor: "{s}", unit: "s",
+      verdict: "Halted", compare: "SILENCE NOT MEANINGFUL",
+      suspend: "OUTPUT SUSPENDED",
+      step: "HALTED", stepNum: "{s}", stepActive: true,
+      doing: "Halted",
+      doingRows: [["PHASE", "IDLE"], ["TARGET", "src/**/*.css"]],
+      stuck: "Not measured",
+      stuckRows: [["USUALLY", "1.2s"], ["LAST SIGN", "tool.started"], ["STALLS AT", "×{stallsAt}"]],
+      needs: "Nothing needed",
+      needsReason: "OPERATOR HALTED THE RUN · LAST SIGN tool.started",
+      actions: [],
+      placeholder: "AWAITING COMMAND"
+    },
+    idle: {
+      link: "LINK OK", base: 0, ticks: false,
+      eyebrow: "[ 04 // IDLE ]", anchor: "—", unit: "",
+      verdict: "Idle", compare: "NO RUN IN FLIGHT",
+      suspend: "NO RUN IN FLIGHT",
+      step: "NOT STARTED", stepNum: null, stepActive: false,
+      doing: "Nothing running",
+      doingRows: [["PHASE", "IDLE"], ["TARGET", "src/**/*.css"]],
+      stuck: "Not measured",
+      stuckRows: [["USUALLY", "1.2s"], ["LAST SIGN", "tool.completed"], ["STALLS AT", "×{stallsAt}"]],
+      needs: "Nothing needed",
+      needsReason: "NO RUN IN FLIGHT · LAST SIGN tool.completed",
+      actions: [],
+      placeholder: "AWAITING COMMAND"
+    },
+    lost: {
+      link: "LINK DOWN", base: 8, ticks: true,
+      eyebrow: "[ — // LINK DOWN ]", anchor: "{s}", unit: "s",
+      verdict: "Connection lost", compare: "RUNTIME UNREACHABLE",
+      suspend: "NO SIGNAL FROM RUNTIME",
+      step: "UNREPORTED", stepNum: null, stepActive: false,
+      doing: "Not reported",
+      doingRows: [["PHASE", "—"], ["TARGET", "—"]],
+      stuck: "Not measured",
+      stuckRows: [["USUALLY", "—"], ["LAST SIGN", "—"], ["STALLS AT", "×{stallsAt}"]],
+      needs: "Connection lost",
+      needsReason: "RUNTIME UNREACHABLE · {s}s",
+      actions: [],
+      placeholder: "AWAITING COMMAND"
+    },
+    approval: {
+      link: "LINK OK", base: 12, ticks: true,
+      eyebrow: "[ 04 // APPROVAL ]", anchor: "{s}", unit: "s",
+      verdict: "Approval waiting", compare: "REQUIRES YOUR DECISION",
+      suspend: "OUTPUT SUSPENDED",
+      step: "AWAITING DECISION", stepNum: null, stepActive: true,
+      doing: "Awaiting approval",
+      doingRows: [["PHASE", "WAITING"], ["TARGET", "src/theme/tokens.css"]],
+      stuck: "Not measured",
+      stuckRows: [["USUALLY", "1.2s"], ["LAST SIGN", "tool.started"], ["STALLS AT", "×{stallsAt}"]],
+      needs: "Approval waiting",
+      needsReason: "WRITE ACCESS · src/theme/tokens.css",
+      actions: [["◎ APPROVE", true], ["✕ DENY", false]],
+      placeholder: "AWAITING YOUR DECISION · WRITE ACCESS"
+    }
+  };
+
+  var root = document.documentElement;
+  var actions = document.getElementById("surface-actions");
+  var prompt = document.getElementById("prompt");
+  var step3 = document.getElementById("stepActive");
+  var state = { key: "stalled", s: 47, elapsed: 65 };
+  var lastKey = null;
+  var pad = function (n) { return (n < 10 ? "0" : "") + n; };
+
+  function byId(id) { return document.getElementById(id); }
+  function set(id, text) { var el = byId(id); if (el !== null) el.textContent = text; }
+
+  function clock(seconds) {
+    return pad(Math.floor(seconds / 3600)) + ":" + pad(Math.floor(seconds / 60) % 60) + ":" + pad(seconds % 60);
+  }
+
+  // 动作是状态，不是配置：槽里只放当前状态真的有的动作（空闲、断链时是空的）
+  function renderActions(list) {
+    actions.replaceChildren();
+    list.forEach(function (entry) {
+      var button = document.createElement("button");
+      button.type = "button";
+      button.textContent = entry[0];
+      if (!entry[1]) button.dataset.variant = "quiet";
+      if (state.key === "stalled" && entry[0].indexOf("HALT") >= 0) {
+        button.id = "haltbtn";
+        button.addEventListener("click", halt);
+      }
+      actions.append(button);
+    });
+  }
+
+  function renderRows(id, rows, fill) {
+    byId(id).innerHTML = rows.map(function (row) {
+      return '<div class="row"><span class="k">' + row[0] + '</span><span class="v">' + fill(row[1]) + "</span></div>";
+    }).join("");
+  }
+
+  // 时间线跟着秒数走：最后一签随静默左移，静默超过整窗就整窗无信号。
+  // 这样"读数"和"图形"永远是同一件事，不会各说各话。
+  function renderTimeline(silent) {
+    var shift = silent - STATES.stalled.base;
+    var lastLeft = 0;
+    document.querySelectorAll("[data-age]").forEach(function (el) {
+      var age = Number(el.dataset.age) + shift;
+      var pct = ((WINDOW - age) / WINDOW) * 100;
+      if (el.classList.contains("tl-last")) lastLeft = Math.max(pct, 0);
+      if (pct <= 0) { el.hidden = true; return; }
+      el.hidden = false;
+      el.style.left = pct.toFixed(2) + "%";
+    });
+    var gap = byId("tlGap");
+    if (gap !== null) gap.style.left = lastLeft.toFixed(2) + "%";
+  }
+
+  function render() {
+    var st = STATES[state.key];
+    var ratio = Math.max(1, Math.round(state.s / USUAL));
+    var fill = function (tpl) {
+      return String(tpl).replace("{s}", state.s).replace("{ratio}", ratio).replace("{stallsAt}", STALLS_AT);
+    };
+    // 结构只在换状态时重建：每秒重建会把焦点从按钮上踢掉
+    var keyChanged = state.key !== lastKey;
+    lastKey = state.key;
+
+    root.dataset.state = state.key;
+    set("elapsed", clock(state.elapsed));
+    set("linkLabel", st.link);
+    set("eyebrow", st.eyebrow);
+    set("anchor", fill(st.anchor));
+    set("anchorUnit", st.unit);
+    set("verdict", st.verdict);
+    set("compare", fill(st.compare));
+    set("suspend", st.suspend);
+    set("stepStat", fill(st.step) + (st.stepNum === null ? "" : " · " + fill(st.stepNum) + "s"));
+    set("doing", st.doing);
+    set("stuck", st.stuck);
+    set("needs", fill(st.needs));
+    set("needsReason", fill(st.needsReason));
+    prompt.placeholder = st.placeholder;
+    renderTimeline(state.s);
+
+    if (!keyChanged) return;
+    renderRows("doingRows", st.doingRows, fill);
+    renderRows("stuckRows", st.stuckRows, fill);
+    renderActions(st.actions);
+    step3.classList.toggle("active", st.stepActive);
+    step3.dataset.state = state.key;
+  }
+
+  function syncSwitch() {
+    document.querySelectorAll("#stateSwitch button").forEach(function (peer) {
+      peer.setAttribute("aria-pressed", String(peer.dataset.stateKey === state.key));
+    });
+  }
+
+  function goTo(key) {
+    state.key = key;
+    state.s = STATES[key].base;
+    syncSwitch();
+    render();
+  }
+
+  // HALT / 重新武装：s 保持不变，所以锚点停在它停下那一刻，不跳
+  function halt() { if (state.key !== "stalled") return; state.key = "halted"; syncSwitch(); render(); }
+  function arm() { if (state.key !== "halted") return; state.key = "stalled"; syncSwitch(); render(); }
+
+  function tick() {
+    state.elapsed++;
+    if (STATES[state.key].ticks) state.s++;
+    render();
+  }
+
+  document.addEventListener("keydown", function (event) {
+    if (event.key === "Escape") halt();
+  });
+  prompt.addEventListener("keydown", function (event) {
+    if (event.key !== "Enter" || event.shiftKey) return;
+    event.preventDefault();
+    arm();   // 范本不造运行时输出：回车只把停掉的运行重新武装
+  });
+  document.getElementById("sendbtn").addEventListener("click", arm);
+
+  document.getElementById("stateSwitch").addEventListener("click", function (event) {
+    var button = event.target.closest("button[data-state-key]");
+    if (button !== null) goTo(button.dataset.stateKey);
+  });
+
+  var modes = document.getElementById("modes");
+  modes.addEventListener("click", function (event) {
+    var pressed = event.target.closest("button[data-mode]");
+    if (pressed === null) return;
+    modes.querySelectorAll("button[data-mode]").forEach(function (peer) {
+      peer.setAttribute("aria-pressed", String(peer === pressed));
+    });
+  });
+
+  var op = document.getElementById("regOperator");
+  var ex = document.getElementById("regExpert");
+  function setReg(expert) {
+    root.dataset.expert = expert ? "true" : "false";
+    op.setAttribute("aria-pressed", String(!expert));
+    ex.setAttribute("aria-pressed", String(expert));
+  }
+  op.addEventListener("click", function () { setReg(false); });
+  ex.addEventListener("click", function () { setReg(true); });
+
+  render();
+
+  // 馈送是"输出尾巴"：开屏落在最新一行上，装不下就让它自己滚（不裁、不渐隐）
+  var feedLines = document.querySelector(".feed-lines");
+  if (feedLines !== null) feedLines.scrollTop = feedLines.scrollHeight;
+
+  setInterval(tick, 1000);
+</script>
+</body>
+</html>
