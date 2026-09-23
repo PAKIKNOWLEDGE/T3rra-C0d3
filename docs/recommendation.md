@@ -1,5 +1,15 @@
 # 结论与建议
 
+> **代际: core-era ｜ 状态: 部分作废（仅历史） ｜ 取代: [`status.md`](./status.md)@2026-09-23**
+>
+> 本文写于 2026-09-21，当时的口径是"**保留 core 的界面、只换引擎（一个小手术）**"。
+> **该口径已被取代**：2026-09-23 起项目是**重写**，工程树在 `t3rra-C0d3`（见 `status.md` 的代际表）。
+>
+> - **仍然有效**：§2 的对比表（证据）、§4 的判决标准、§5 的开放问题、Tauri 的记账。
+> - **已作废**：§3 那种"代价 = 一个 `AgentSource` 文件"的小手术口径。
+> - **§4 的 spike 已经做完了**：结论见 [`adapters/opencode-acp.md`](./adapters/opencode-acp.md)
+>   与 `traces/opencode/`（四个判据全闭合，含审批那条）。
+
 前置：[`current-state.md`](./current-state.md)、[`backends/omp.md`](./backends/omp.md)、
 [`backends/opencode.md`](./backends/opencode.md)、[`backends/dsh.md`](./backends/dsh.md)。
 

@@ -6,6 +6,10 @@
 **现状（在做什么、决定了什么）写在 [`docs/status.md`](./docs/status.md)**，那份有日期、会变；
 本文件不写判定、不写立场，避免变成会撒谎的化石。
 
+**名字怎么叫（写法统一，别再造出第四套）**：现行工程树写作 **`t3rra-C0d3`**；
+上一版实现的目录名是 **`t3rra-core`**。哪个现行、哪个退役、从哪天起，看 `docs/status.md` 的代际表。
+界面上的**产品品牌**（屏幕上那几个字）是另一件事。
+
 ## 一、这个工作区有什么
 
 | 位置 | 内容 |
@@ -20,8 +24,9 @@
 
 ## 二、已锁定的决策（不许重开辩论）
 
-1. **后端方向**：保留 t3rra 界面，引擎从 omp 换成 **opencode**
-   （理由与对比见 `docs/recommendation.md`；尚未做 spike 实证）。
+1. **后端方向**：保留 t3rra 的界面契约，引擎从 omp 换成 **opencode**
+   （理由与对比见 `docs/recommendation.md`；**2026-09-23 已做完零 token spike**，
+   实测结论见 `docs/adapters/opencode-acp.md` 与 `traces/opencode/`）。
    omp 的 `blob-broker`（图片发布到第三方图床）是换引擎的直接动因，证据在
    `docs/backends/omp.md`。
 2. **界面风格**：**ark 族 · complex 深度 · 只有暗色**。亮色主题已死。

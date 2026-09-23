@@ -1,10 +1,19 @@
-# 现状
+# 现状（**2026-09-21 快照，现状部分已过时**）
 
-## 1. 这个 workspace 是空的，t3rra-core 不是
+> **代际: core-era ｜ 状态: 仅历史 ｜ 取代: [`status.md`](./status.md)@2026-09-23**
+>
+> ⚠️ **这份是历史快照，不是"当前状态"。** 当前状态看 [`status.md`](./status.md)。
+> 仍然有效的部分：§4 的规则原文（除 13–18 视觉，已被 [`design-contract.md`](./design-contract.md) 取代）、
+> §6 的 omp 实测基线（作为历史对照）。
+> 已过时的部分：§1「workspace 是空的」、§3「绑死在 omp 上的东西」、§5 里那条「引擎=omp 已定」。
+> 2026-09-23 起：本工作区就是工程本体，[`adapters/opencode-acp.md`](./adapters/opencode-acp.md) 是引擎依据。
+
+## 1. 建成时这里是空的，工程在 t3rra-core（**当时的说法**）
 
 `C:\DEV\develop\t3rra-C0d3` 建成时为空——**"从零开始"这个感觉是错的**。
 
-真正的东西在 `C:\DEV\develop\NIX\t3rra-core`。它不是原型，是一个已经跑通真引擎的成品界面：
+真正的东西当时在 `C:\DEV\develop\NIX\t3rra-core`。它不是原型，是一个已经跑通真引擎的成品界面
+（2026-09-23 起它是**上一版实现**，只读参考）：
 
 | 已完成 | 证据 |
 | --- | --- |
@@ -57,14 +66,16 @@ typecheck 干净 · **69 条单测** · 41/41 DOM id · 19/19 静态检查 · �
    样本 <3 **拒绝给判据**。
 10–12. 文案是**工业控制系统状态报告**，不是 AI 助手对话；数据缺失显示
    `NOT STATED` / `NOT REPORTED`，**宁可显示 absence，不许造一个看着合理的值**。
-13–18. 视觉遵循 3NDM1N15T4T0R · Endfield 设计语言；`border-radius: 0`；强调色面积 <5%。
+13–18.（**已被取代，勿再引用**）视觉原本遵循 Endfield 设计语言；现以
+   [`design-contract.md`](./design-contract.md) 为准：**ark 族 · complex · 只有暗色**，
+   旧的那套是反面教材（见 [`design-critique.md`](./design-critique.md)）。
 19–21. **无头浏览器禁用**；因此**不得声称看见过渲染结果**。
 
-## 5. 已定决策（`AGENTS.md` §六，不要重开辩论）
+## 5. 已定决策（旧仓库 `AGENTS.md` §六 的口径；**其中"引擎"一行已于 2026-09-23 改**）
 
 | 决定 | 结论 |
 | --- | --- |
-| 引擎 | omp（`omp acp`）——**这条是本次调研要动的唯一一条** |
+| 引擎 | **opencode**（`opencode acp`，ACP v1）。改动依据是本机实测：`adapters/opencode-acp.md` + `traces/opencode/`。~~omp~~ 已被换掉 |
 | 传输 | ACP over stdio，JSONL 严格 LF 分帧 |
 | 外壳 | Tauri。**Electron 完全不可接受**（用户明令） |
 | 外壳边界 | Rust 只做受监管的管道，不认识事件词汇 |
@@ -74,9 +85,10 @@ typecheck 干净 · **69 条单测** · 41/41 DOM id · 19/19 静态检查 · �
 | 会话存储 | 归引擎。界面只渲染 `session/list`，绝不自己存对话 |
 | 语域 | OPERATOR / EXPERT 分层，协议词汇只在 EXPERT 出现 |
 
-## 6. omp 的实测基线（`NOTES.md` §八/§九/§十/§十二）
+## 6. omp 的实测基线（**历史对照**，`NOTES.md` §八/§九/§十/§十二）
 
-引擎 `omp 18.2.6`，`omp acp`，protocolVersion **1**：
+引擎 `omp 18.2.6`，`omp acp`，protocolVersion **1**。opencode 的对应实测在
+[`adapters/opencode-acp.md`](./adapters/opencode-acp.md)：
 
 - 冷启动 **1.13s** 可用（`initialize` 937ms + `session/new` 186ms）→ **必须启动即 spawn**。
 - 首 token 延迟 **4.58s**（trivial 指令、warm session）。
