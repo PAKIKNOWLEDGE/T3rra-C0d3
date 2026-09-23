@@ -52,7 +52,10 @@
 
 ## 三、契约级行为【实测】
 
-- **`session/load` 回放先流、响应后到**：有历史的会话里，**141 条更新先到**，响应随后（521ms 后）返回；
+- **`session/load` 回放先流、响应后到**：有历史的会话里，**141 条更新先到**，响应随后返回
+  （sent 1848ms → response 2384ms）。
+  证据：`traces/opencode/opencode-acp-2026-09-23T06-46-05-107Z-sequencing-redacted.jsonl` 的
+  `load_timing` 记录（这条原先只存在于控制台输出，2026-09-23 补进 trace）。
   → 符合 ACP "MUST replay the whole conversation, respond only after all entries streamed"
   → **适配器可以把"load 已返回"当"历史完整"的信号**。（这条我第一次测时挑到空会话，结论反了；
   换会话重测才定下来——所以"挑一个有历史的会话"是这类实验的必要条件。）
@@ -67,7 +70,7 @@
 | 能力 | omp | opencode 1.18.32【实测】 | 影响 |
 | --- | --- | --- | --- |
 | 模式 | `session.modes` | `modes: null`；`mode` 走 configOptions，**只有 `build` / `plan`** | 界面模式组接上去**只有两档**（没有 ASK）。按"只渲染 runtime 给的清单"规矩，这是正常输入，不是损失 |
-| effort | 有 `thinking` | **`effort`，且只对"有 variants 的模型"出现**：`deepseek-v4-pro`/`-flash`→`low`、`muse-spark-1.2/1.3`→`minimal`、`ling-3.0-flash-fin-free`→`low`；`big-pickle`/`mimo-v2.6`/`nemotron-*`→**无此 option** | 界面必须**按当前模型的清单**动态渲染；我先前"没有 effort"的结论作废（当时默认模型没有 variants） |
+| effort | 有 `thinking` | **`effort`，且只对"有 variants 的模型"出现**：`deepseek-v4-pro`/`-flash`→`low`、`muse-spark-1.2/1.3`→`minimal`、`ling-3.0-flash-fin-free`→`low`；`big-pickle`/`mimo-v2.6`/`nemotron-*`→**无此 option**。证据：`traces/opencode/opencode-acp-2026-09-23T06-46-05-107Z-sequencing-redacted.jsonl` 里逐个模型 `set_config_option` 后的 option 清单 | 界面必须**按当前模型的清单**动态渲染；我先前"没有 effort"的结论作废（当时默认模型没有 variants） |
 | `thinking` | 有这个 option 名 | **不存在**；对应物是 `effort` | 契约里若绑过 `thinking` 这个名字，要改 |
 | usage | `usage_update`＝上下文填充率 | 实测**有 `usage_update`**，且 `PromptResponse.usage` 给 `{inputTokens, outputTokens, totalTokens, cachedReadTokens}` | 与"两个量（本轮 token vs 上下文填充）"的区分对得上；`usage_update` 的字段形状**待核** |
 | approval | **死的**（`permissions=false`） | **活着，但要配置才会来问**：项目配置 `permission.edit = "ask"` 后，真 prompt 触发了 `session/request_permission`（**agent→client 请求，不是 `session/update`**），`toolCall kind=edit`，选项三档 `allow_once` / `allow_always` / `reject_once`；客户端选 `reject` 后 turn 正常 `end_turn` | **omp 那个死掉的裁决在这里回来了**。注意：**默认配置下它一次都不来问**（等于静默自动放行）——"approval 是否出现"是**配置问题，不是能力缺口**，界面要能解释这件事 |

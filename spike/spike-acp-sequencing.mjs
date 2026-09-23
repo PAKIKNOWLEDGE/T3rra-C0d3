@@ -116,10 +116,15 @@ async function main() {
 
   // ---- A: does a third option appear for other models? ------------------------
   console.log(`\n=== A. effort/variants per model (${modelValues.length} models advertised) ===`);
+  record({ dir: "meta", method: "options_at_new", option_ids: optionIds(session) }, t0);
   for (const value of modelValues) {
     try {
       const updated = await request("session/set_config_option", { sessionId, configId: "model", value });
-      console.log(`  ${value.padEnd(42)} -> ${JSON.stringify(optionIds(updated))}`);
+      const ids = optionIds(updated);
+      console.log(`  ${value.padEnd(42)} -> ${JSON.stringify(ids)}`);
+      // Landed on purpose: the doc claims per-model `effort` values, and a console log is not
+      // evidence. Option ids/values are not user data — this is safe to keep.
+      record({ dir: "meta", method: "set_config_option", model: value, option_ids: ids }, t0);
     } catch (err) {
       console.log(`  ${value.padEnd(42)} -> ${String(err).slice(0, 120)}`);
       break; // an unsupported method will fail for every value; stop shouting
@@ -147,7 +152,22 @@ async function main() {
     .catch((err) => { tResponse = Date.now() - t0; return { error: String(err).slice(0, 200) }; });
   const loaded = await loadPromise;
   const atResponse = updatesSeen;
+  /* Landed on purpose: the adapter doc claims the replay streams *before* the response
+     resolves (ACP: "respond only after all entries streamed"). That ordering is only
+     checkable if the response timestamp is in the trace, so it goes in. */
+  record(
+    {
+      dir: "meta",
+      method: "load_timing",
+      load_sent_ms: tLoadSent,
+      load_response_ms: tResponse,
+      updates_before_response: atResponse - beforeLoad,
+      updates_after_response_so_far: 0,
+    },
+    t0,
+  );
   await new Promise((r) => setTimeout(r, REPLAY_WINDOW_MS));
+  record({ dir: "meta", method: "load_timing", phase: "settled", updates_total: updatesSeen - beforeLoad }, t0);
 
   console.log(`  load sent at        ${tLoadSent} ms`);
   console.log(`  load responded at   ${tResponse} ms  (updates so far: ${atResponse - beforeLoad})`);

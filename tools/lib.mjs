@@ -3,14 +3,29 @@
  * themselves can be tested — a gate nobody tests is a gate that quietly stops working.
  */
 
-const KIND_ROW = /^\|\s*`([a-z_]+)`\s*\|/;
+const KIND_TOKEN = /`([a-z][a-z_]{2,})`/g;
 
-/** Kinds the adapter doc claims (`## 二` table rows look like `| \`tool_call\` | … |`). */
+/** The slice of a markdown file that belongs to one `## …` section. */
+const sectionOf = (markdown, headingPrefix) => {
+  const start = markdown.indexOf(headingPrefix);
+  if (start < 0) return "";
+  const rest = markdown.slice(start + headingPrefix.length);
+  const next = rest.indexOf("\n## ");
+  return next < 0 ? rest : rest.slice(0, next);
+};
+
+/**
+ * Kinds the adapter doc claims, read from the message-enumeration table's first column.
+ * Scoped to one section on purpose: other tables in the same file list *capabilities*,
+ * and treating those as kinds is how a gate starts lying.
+ */
 export const parseDocKindTable = (markdown) => {
   const kinds = new Set();
-  for (const line of markdown.split("\n")) {
-    const match = KIND_ROW.exec(line.trim());
-    if (match !== null) kinds.add(match[1]);
+  for (const line of sectionOf(markdown, "## 二").split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith("|")) continue;
+    const firstCell = trimmed.slice(1).split("|")[0] ?? "";
+    for (const match of firstCell.matchAll(KIND_TOKEN)) kinds.add(match[1]);
   }
   return kinds;
 };
@@ -41,8 +56,11 @@ export const collectObservations = (traceText) => {
     }
     lines += 1;
     if (typeof entry.method === "string") methods.add(entry.method);
-    if (entry.method === "session/update" && typeof entry.kind === "string" && entry.kind !== "?") {
-      kinds.add(entry.kind);
+    // Two record shapes exist on purpose: the redacted probes write `kind`, the full-message
+    // probes keep the payload. Both are evidence; the collector reads either.
+    if (entry.method === "session/update") {
+      const kind = typeof entry.kind === "string" && entry.kind !== "?" ? entry.kind : entry.params?.update?.sessionUpdate;
+      if (typeof kind === "string" && kind !== "") kinds.add(kind);
     }
   }
   return { kinds, methods, lines };
