@@ -96,7 +96,10 @@ const stream = http.get({ hostname: baseUrl.hostname, port: baseUrl.port, path: 
       if (typeof message.id === "number" && pending.has(message.id)) {
         const method = pending.get(message.id);
         pending.delete(message.id);
-        handleResponse(message.id, method, message);
+        // A response is still evidence: the adapter reads the stop reason off it. Skipping that
+        // step here is how an earlier version of this probe reported "silent engine" for a turn
+        // that had already finished.
+        if (!handleResponse(message.id, method, message)) apply(translateLine(line).events);
         continue;
       }
       apply(translateLine(line).events);

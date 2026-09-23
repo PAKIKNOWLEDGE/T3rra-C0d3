@@ -142,6 +142,34 @@ $env:T3RRA_ENGINE="opencode"; npm run dev     # → http://localhost:5191/
   `DIFF`/`REVERT`/`PTY`/`TODO`/`SUBAGENT`）不许作为静态文字出现在界面里。
   剩下的"点了有没有合理反应"只有眼睛能判。
 
+### 视觉第 2 代接进 `app/`（2026-09-23，仓库主人要求"接进主仓库用用看"）
+
+**接进去的**（视觉层照搬样张 `tmp/demo/ark-console-v2.html`，内容层只留真数据）：
+底色改三层灰阶（**不用纯黑**）、边线四档、字体轨换成"宽展示字 + Instrument Sans + IBM Plex Mono +
+**打字机存档轨** + HarmonyOS CJK"、角括号 HUD 面板、`◆/◇` 菱形、反相 hover、记录戳、扫描分隔线、
+45° 切角（活动格/主操作）、动效 150–300ms 无弹跳。字体随包进仓库：`app/fonts/`（38 个文件，
+见 `app/fonts/README.md` 的许可表；闸会检查字体引用是否齐全）。
+
+**故意没接的（每条都有理由，别当成漏了）**：
+
+| 样张里有 | 为什么产品里没有 | 解锁需要 |
+| --- | --- | --- |
+| 顶部 `STALLED/IDLE/LOST/APPROVAL` 状态条 | 那是**样张展示用 chrome**；产品里这些态由真引擎决定，摆一个不由数据驱动的切换器就是悬空控件 | —— |
+| 步骤带（01/02/03 + `7 MATCHES`） | "步骤"这个概念在契约里还不存在 | 静默判据 / 相位模型落地 |
+| 扫描线上的坐标数字 | **装饰不许带假遥测**（分隔线保留，数字删） | —— |
+| `▶ HALT` 中断按钮 | ACP 的 `session/cancel` **还没实测**，先不给按钮 | 一次零成本探针 |
+| 状态条之外的大锚点语义 | 现在锚点是**时钟**（真实）；判决词是真实相位（`Idle/Ready/Running`），比较行明写 `SILENCE NOT MEASURED` | 静默判据（规则 7–9） |
+| 会话切换 / EVENTS 视图 | 视图与会话管理还没做 | 会话列表 + `session/load`（回放已实测可用） |
+
+**新增的真实交互**：`OPERATOR / EXPERT` 语域（EXPERT 才显示 `[ TRANSPORT ]`：binary/cwd/exit/
+last error/unmapped/provenance）——这是纯展示层，接线在 `console.ts`，闸确认已接。
+舞台主标题 = **操作者自己的指令**（我们真正持有的"任务主题"事实）；没有指令时显示 absence。
+
+**本轮证据**：`npm run check:all` 六道闸全绿（tsc · 19 单测 · 5/5 控件接线 + 字体 38/38 ·
+范本静态 · 文档↔报文 · 文档链接）；`spike/probe-app-pipeline.mjs` 用免费模型跑通：
+thought 流式 → `agent_message_chunk`("ok") → `usage_update`（按 COUNTED 记）→ 响应带 `stopReason`。
+**渲染观感仍归主人的眼睛**（无头禁令不变）。
+
 ### 本轮其它决定
 
 - **工程写在本工作区**（`C:\DEV\develop\t3rra-C0d3`），产品代码的落点 `app/`。

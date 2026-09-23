@@ -16,10 +16,11 @@
  * eyes are the owner's (no headless browsers here).
  */
 
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 
 const SHELL = "app/index.html";
+const notes = [];
 
 /** Vocabulary that belongs to the runtime or to an unbuilt capability — never to the shell. */
 const RUNTIME_VOCABULARY = [
@@ -76,7 +77,21 @@ for (const word of RUNTIME_VOCABULARY) {
   }
 }
 
+// Fonts: a missing file is a silent font change, and silent font changes are how a design
+// drifts. Every url() in the font stylesheet must resolve next to it.
+const FONT_CSS = "app/fonts/fonts.css";
+if (!existsSync(FONT_CSS)) {
+  failures.push(`${FONT_CSS} is missing: the shell links it`);
+} else {
+  const css = readFileSync(FONT_CSS, "utf8");
+  const targets = [...new Set([...css.matchAll(/url\(\s*["']?([^"')]+)["']?\s*\)/g)].map((m) => m[1]))];
+  const missing = targets.filter((target) => !existsSync(join("app/fonts", target)));
+  for (const target of missing) failures.push(`font file referenced but absent: app/fonts/${target}`);
+  notes.push(`${targets.length - missing.length}/${targets.length} font files present`);
+}
+
 console.log(`${SHELL}: ${controls.length} control(s), ${wired} wired, ${RUNTIME_VOCABULARY.length} forbidden words checked`);
+if (notes.length > 0) console.log(`fonts: ${notes.join(", ")}`);
 if (failures.length === 0) {
   console.log("\nPASS  no dangling controls, no baked-in runtime vocabulary");
 } else {

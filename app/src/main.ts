@@ -1,29 +1,39 @@
 /**
  * Boot: connect the byte channel, perform the ACP handshake, send an instruction, and feed
- * every line through the adapter into the view. Request/response bookkeeping lives here —
- * the adapter maps notifications, while "which request was this response for" is ours.
+ * every line through the adapter into the view.
  *
- * Client capabilities are sent EMPTY on purpose. The captured traces show that declaring
- * nothing is what keeps this frontend inert: the engine then never asks us for a filesystem,
- * a terminal, or permission, so the first milestone needs no capability surface at all.
+ * Request/response bookkeeping lives here (the adapter maps notifications; "which request was
+ * this response for" is ours). Client capabilities are sent EMPTY on purpose: the captured
+ * traces show that declaring nothing is what keeps this frontend inert — the engine then never
+ * asks us for a filesystem, a terminal, or permission.
+ *
+ * The stage title is the operator's *own instruction* — the one fact about "what is happening"
+ * that we actually hold (rules-inherited §四: the stage owns the task topic; the tool stream
+ * lives in the feed). Before the first instruction it says so, rather than inventing a topic.
  */
 
 import { translateLine } from "./engine/acp.ts";
+import type { AgentEvent } from "./contract/events.ts";
 import { createBridgeTransport, type Transport } from "./engine/transport.ts";
 import { emptyView, reduceView, type ConsoleView } from "./view/derive.ts";
-import { mountConsole } from "./ui/console.ts";
-
-interface PendingRequest {
-  readonly method: string;
-}
+import { mountConsole, type SessionFacts } from "./ui/console.ts";
 
 const ui = mountConsole();
 const transport: Transport = createBridgeTransport(crypto.randomUUID());
 
 let view: ConsoleView = emptyView();
 let nextId = 1;
-let agentVersion: string | undefined;
-const pending = new Map<number, PendingRequest>();
+const pending = new Map<number, { method: string }>();
+
+let facts: SessionFacts = {
+  phase: "[ STARTING ]",
+  phaseNote: "BYTES ONLY · NO ENGINE YET",
+  busy: false,
+};
+const patch = (next: SessionFacts): void => {
+  facts = { ...facts, ...next };
+  ui.setFacts(next);
+};
 
 const apply = (events: ReturnType<typeof translateLine>["events"]): void => {
   for (const event of events) view = reduceView(view, event);
@@ -34,7 +44,7 @@ const send = (method: string, params: unknown): number => {
   const id = nextId++;
   pending.set(id, { method });
   void transport.write(JSON.stringify({ jsonrpc: "2.0", id, method, params })).catch((error: unknown) => {
-    ui.setTransport({ lastError: String(error).slice(0, 120) });
+    patch({ lastError: String(error).slice(0, 160) });
   });
   return id;
 };
@@ -43,18 +53,28 @@ const send = (method: string, params: unknown): number => {
 const handleResponse = (id: number, method: string, result: unknown): boolean => {
   if (method === "initialize") {
     const info = (result as { agentInfo?: { name?: string; version?: string } }).agentInfo;
-    agentVersion = [info?.name, info?.version].filter((part) => part !== undefined && part !== "").join(" ");
-    if (agentVersion !== "") ui.setEngineInfo(agentVersion);
+    const name = [info?.name, info?.version].filter((part) => part !== undefined && part !== "").join(" ");
+    patch({ engine: name === "" ? "NOT STATED" : name });
     return true;
   }
   if (method === "session/new") {
     const payload = result as { sessionId?: string; configOptions?: readonly unknown[] };
-    const events = [];
+    const events: AgentEvent[] = [];
     if (typeof payload.sessionId === "string") {
       events.push({ kind: "session.opened" as const, from: { method: "session/new.response", variant: undefined }, sessionId: payload.sessionId });
+      patch({
+        sessionId: payload.sessionId,
+        startedAt: new Date().toISOString().replace("T", " ").slice(0, 19),
+        phase: "[ READY ]",
+        phaseNote: "AWAITING INSTRUCTION · SESSION OPEN",
+      });
+      ui.setCommandEnabled(true);
+      ui.setPlaceholder("AWAITING COMMAND");
     }
-    const optionEvent = translateLine(JSON.stringify({ jsonrpc: "2.0", method: "session/update", params: { update: { sessionUpdate: "config_option_update", configOptions: payload.configOptions ?? [] } } }));
-    events.push(...optionEvent.events);
+    const optionsEvent = translateLine(
+      JSON.stringify({ jsonrpc: "2.0", method: "session/update", params: { update: { sessionUpdate: "config_option_update", configOptions: payload.configOptions ?? [] } } }),
+    );
+    events.push(...optionsEvent.events);
     apply(events);
     return true;
   }
@@ -64,46 +84,54 @@ const handleResponse = (id: number, method: string, result: unknown): boolean =>
 const handleLine = (line: string): void => {
   let id: number | undefined;
   let method: string | undefined;
+  let parsed: { id?: number; result?: unknown; error?: unknown } | undefined;
   try {
-    const message = JSON.parse(line) as { id?: number; result?: unknown; error?: unknown };
-    if (typeof message.id === "number" && pending.has(message.id)) {
-      id = message.id;
-      method = pending.get(message.id)?.method;
-      pending.delete(message.id);
-      if (message.error !== undefined) ui.setTransport({ lastError: JSON.stringify(message.error).slice(0, 120) });
+    parsed = JSON.parse(line) as typeof parsed;
+    if (parsed !== undefined && typeof parsed.id === "number" && pending.has(parsed.id)) {
+      id = parsed.id;
+      method = pending.get(parsed.id)?.method;
+      pending.delete(parsed.id);
+      if (parsed.error !== undefined) patch({ lastError: JSON.stringify(parsed.error).slice(0, 160) });
     }
   } catch {
-    // not JSON — the adapter will count it as unmapped, which is the honest outcome
+    // not JSON — the adapter counts it as unmapped, which is the honest outcome
   }
-  if (id !== undefined && method !== undefined && handleResponse(id, method, JSON.parse(line).result)) return;
+  if (id !== undefined && method !== undefined && parsed !== undefined && handleResponse(id, method, parsed.result)) return;
   apply(translateLine(line).events);
+
+  // The turn is over when the engine says so; the stage stops claiming to be busy at once.
+  const stop = translateLine(line).events.find((event) => event.kind === "prompt.ended");
+  if (stop !== undefined && stop.kind === "prompt.ended") {
+    patch({ busy: false, phase: "[ READY ]", phaseNote: `TURN ENDED · ${stop.stopReason.toUpperCase()}` });
+  }
 };
 
 const handshake = async (): Promise<void> => {
   const probe = await transport.probe();
-  ui.setTransport({ binary: probe.binary ?? "NOT FOUND", cwd: probe.cwd ?? "—" });
+  patch({ binary: probe.binary ?? "NOT FOUND", cwd: probe.cwd ?? "NOT STATED" });
   if (probe.binary === null) {
-    ui.setPhase("[ NO ENGINE ]");
+    patch({ phase: "[ NO ENGINE ]", phaseNote: "SET T3RRA_ENGINE_BIN OR PUT OPENCODE ON PATH" });
     ui.setPlaceholder("ENGINE NOT FOUND · SET T3RRA_ENGINE_BIN");
+    ui.setCommandEnabled(false);
     return;
   }
   await transport.spawn();
-  send("initialize", { protocolVersion: 1, clientInfo: { name: "t3rra-console", version: "0.1.0" }, clientCapabilities: {} });
-  await new Promise((done) => setTimeout(done, 500));
+  send("initialize", { protocolVersion: 1, clientInfo: { name: "t3rra-console", version: "0.2.0" }, clientCapabilities: {} });
+  await new Promise((done) => setTimeout(done, 600));
   send("session/new", { cwd: probe.cwd ?? ".", mcpServers: [] });
   ui.setLink("ok");
-  ui.setPhase("[ READY ]");
-  ui.setPlaceholder("AWAITING COMMAND");
+  patch({ phase: "[ OPENING SESSION ]", phaseNote: "ENGINE UP · SESSION PENDING" });
 };
 
 transport.onLine(handleLine);
 transport.onExit((info) => {
   ui.setLink("down");
-  ui.setPhase("[ ENGINE EXITED ]");
+  patch({ busy: false, phase: "[ ENGINE EXITED ]", phaseNote: "LINK DOWN · PRESS RESTART", exit: `code ${info.code ?? "—"} · signal ${info.signal ?? "—"}` });
+  ui.setCommandEnabled(false);
   apply([{ kind: "engine.exited", from: { method: "process", variant: undefined }, code: info.code, signal: info.signal }]);
 });
 transport.onError((message) => {
-  ui.setTransport({ lastError: message.slice(0, 120) });
+  patch({ lastError: message.slice(0, 160) });
   apply([{ kind: "engine.stderr", from: { method: "stderr", variant: undefined }, text: message }]);
 });
 
@@ -114,14 +142,21 @@ ui.onSubmit((text) => {
   }
   // The operator's own line is a fact of the operator, not a claim about the runtime.
   apply([{ kind: "message.appended", from: { method: "operator", variant: undefined }, role: "user", messageId: `local-${nextId}`, text }]);
-  ui.setPhase("[ RUNNING ]");
+  if (facts.topic === undefined) patch({ topic: text });   // the stage title comes from the instruction
+  patch({ busy: true, phase: "[ RUNNING ]", phaseNote: "STREAMING · ESC NOT WIRED (session/cancel UNVERIFIED)" });
   send("session/prompt", { sessionId: view.sessionId, prompt: [{ type: "text", text }] });
 });
 
 ui.onRestart(() => {
   view = emptyView();
-  ui.render(view);
-  void transport.kill().then(handshake).catch((error: unknown) => ui.setTransport({ lastError: String(error).slice(0, 120) }));
+  facts = { phase: "[ RESTARTING ]", phaseNote: "KILLING THE ENGINE PROCESS" };
+  patch({ busy: false, sessionId: undefined, topic: undefined });
+  ui.setCommandEnabled(false);
+  ui.setPlaceholder("RESTARTING ENGINE");
+  void transport
+    .kill()
+    .then(handshake)
+    .catch((error: unknown) => patch({ lastError: String(error).slice(0, 160) }));
 });
 
 ui.onOptionChange((optionId, value) => {
@@ -129,11 +164,19 @@ ui.onOptionChange((optionId, value) => {
   send("session/set_config_option", { sessionId: view.sessionId, configId: optionId, value });
 });
 
+// The clock is the only thing allowed to change the anchor while nothing is streaming.
+let elapsed = 0;
+setInterval(() => {
+  if (facts.sessionId === undefined) return;
+  elapsed += 1;
+  patch({ elapsedSeconds: elapsed });
+}, 1000);
+
 ui.render(view);
+patch({});
 void handshake().catch((error: unknown) => {
   ui.setLink("down");
-  ui.setPhase("[ ERROR ]");
-  ui.setTransport({ lastError: String(error).slice(0, 120) });
+  patch({ phase: "[ ERROR ]", phaseNote: "HANDSHAKE FAILED", lastError: String(error).slice(0, 160) });
 });
 
 export {};

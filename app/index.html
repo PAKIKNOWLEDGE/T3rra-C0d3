@@ -1,171 +1,281 @@
 <!DOCTYPE html>
-<html lang="zh-CN" data-ark-theme="ark" data-ark-depth="complex">
+<html lang="zh-CN" data-ark-family="ark" data-ark-depth="complex" data-expert="false" data-link="down">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>T3RRA // CONSOLE</title>
+<link rel="stylesheet" href="fonts/fonts.css">
 <style>
-  /* ============================================================
-     ark 族 · complex · 只有暗色（docs/design-contract.md）
-     色板/字体/几何照契约；本屏只承担第一版里程碑：
-     接上 opencode 的 ACP，发一句话，把流式回来的东西如实上屏。
-     ============================================================ */
+  /* ============================================================================
+     T3RRA CONSOLE · 视觉第 2 代（ark · complex · 只有暗色）
+
+     与样张（tmp/demo/ark-console-v2.html）的关系：视觉层照搬，**内容层只留真数据**。
+     样张里有、这里故意没有的东西，都不是漏了，而是没有真数据托底（悬空控件是硬禁令）：
+       · 顶部状态条 STALLED/IDLE/LOST/APPROVAL —— 那是样张的展示用 chrome；
+         这里的链路状态由真引擎的生死决定（LINK OK / LINK DOWN）
+       · 步骤带（01/02/03 带 7 MATCHES 之类）—— 静默判据与"步骤"概念还没实现
+       · 扫描线上的坐标数字 —— 装饰不许带假遥测；分隔线保留，数字删掉
+       · ▶ HALT —— ACP 的 session/cancel 还没实测，先不给按钮（见 status.md 待办）
+     诚实边界：模式/模型/effort 只渲染运行时给的清单；缺失一律写 NOT STATED / NOT REPORTED。
+
+     设计依据见 docs/visual-guide.md；色板与几何的"为什么"见该文件的 §3。
+     ============================================================================ */
   :root {
-    --bg: #080a0b;                                /* ark token: ink */
-    --ink: #f4f6f6;                               /* ark token: paper */
-    --signal: #18d1ff;                            /* 唯一强调色 */
-    --state: #c8eb21;                             /* 只给完成/在线 */
-    --muted: #8d9396;
-    --on-signal: #04252c;
-    --rule: rgba(244, 246, 246, 0.14);
-    --rule-strong: rgba(244, 246, 246, 0.32);
-    --rule-control: rgba(244, 246, 246, 0.40);
-    --panel: rgba(8, 10, 11, 0.82);
-    /* 字体栈保留非 Windows 回退（仓库主人 2026-09-23 的决定） */
-    --font-display: "Bahnschrift SemiCondensed", "Bahnschrift Condensed", "Bahnschrift",
-                    "Arial Narrow", "Roboto Condensed", "DIN Condensed",
-                    "HarmonyOS Sans SC", system-ui, sans-serif;
-    --font-tech: "Space Grotesk", "IBM Plex Sans", "HarmonyOS Sans SC", system-ui, "Segoe UI", sans-serif;
-    --font-cjk: "HarmonyOS Sans SC", "Noto Sans SC", "Source Han Sans SC", "Microsoft YaHei", "PingFang SC", sans-serif;
-    --font-mono: "IBM Plex Mono", "SFMono-Regular", Consolas, "HarmonyOS Sans SC", monospace;
-    --ease: cubic-bezier(.22, .8, .2, 1);
+    --base: #0f1214; --panel: #151a1d; --raised: #1b2125; --shell: #0b0e10;
+    --rule: #262d31; --rule-mid: #333b41; --rule-strong: #414b52; --rule-control: #4c565d;
+    --ink: #eef1f2; --muted: #8d959b; --dim: #5f686e;
+    --signal: #35c8f0; --warn: #e0954a; --danger: #c05555; --state: #a8cc3a;
+
+    --f-display: "Michroma", "Archivo", "Orbitron", "Jost", "HarmonyOS Sans SC", system-ui, sans-serif;
+    --f-ui: "Instrument Sans", "Jost", "Outfit", system-ui, "Segoe UI", sans-serif;
+    --f-mono: "IBM Plex Mono", Consolas, monospace;
+    --f-record: "Special Elite", "Courier Prime", "IBM Plex Mono", monospace;
+    --f-narrow: "Oswald", "Archivo", var(--f-ui);
+    --f-cjk: "HarmonyOS Sans SC", "Microsoft YaHei", sans-serif;
+
+    --ease: cubic-bezier(.2, .7, .3, 1);
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html, body { height: 100%; }
   body {
-    background: var(--bg); color: var(--ink);
-    font-family: var(--font-tech); font-size: 13px;
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) 336px;
-    grid-template-rows: 56px minmax(0, 1fr) auto;
-    grid-template-areas: "top top" "stage dossier" "base base";
+    background: var(--base); color: var(--ink); font-family: var(--f-ui); font-size: 13px;
+    display: grid; grid-template-columns: 58px minmax(0, 1fr) 340px;
+    grid-template-rows: 52px minmax(0, 1fr) auto;
+    grid-template-areas: "top top top" "rail stage dossier" "base base base";
     height: 100vh; overflow: hidden;
   }
-  .micro { font-family: var(--font-tech); font-size: 10px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--muted); font-variant-numeric: tabular-nums; }
-  .mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+  .micro { font-family: var(--f-narrow); font-size: 10px; letter-spacing: .2em; text-transform: uppercase; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .mono { font-family: var(--f-mono); font-variant-numeric: tabular-nums; }
+  .record { font-family: var(--f-record); letter-spacing: .04em; }
 
-  .topbar { grid-area: top; display: flex; align-items: stretch; background: #050607; border-bottom: 1px solid var(--rule); }
+  /* ————————— 顶栏 ————————— */
+  .topbar { grid-area: top; display: flex; align-items: stretch; background: var(--shell); border-bottom: 1px solid var(--rule); }
   .topbar > * { display: flex; align-items: center; }
-  .brand { padding: 0 20px; border-right: 1px solid var(--rule); gap: 10px; }
-  .brand .wordmark { font-family: var(--font-display); font-weight: 700; font-size: 19px; letter-spacing: 0.22em; text-transform: uppercase; }
-  .brand .sub { color: var(--muted); }
-  .slot { padding: 0 18px; gap: 10px; border-right: 1px solid var(--rule); }
-  .slot .value { font-family: var(--font-mono); font-size: 12px; }
-  .topbar .spacer { flex: 1; }
-  .linkstat .dot { width: 7px; height: 7px; background: var(--muted); display: inline-block; }
-  html[data-link="ok"] .linkstat .dot { background: var(--state); }
+  .brand { padding: 0 20px; border-right: 1px solid var(--rule); gap: 12px; }
+  .brand .mark { font-family: var(--f-display); font-size: 17px; letter-spacing: .3em; text-transform: uppercase; }
+  .brand .sub { color: var(--dim); font-family: var(--f-record); font-size: 11px; letter-spacing: .12em; }
+  .slot { padding: 0 16px; gap: 9px; border-right: 1px solid var(--rule); min-width: 0; }
+  .slot .value { font-family: var(--f-mono); font-size: 12px; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 30ch; }
+  .spacer { flex: 1; border: 0 !important; }
+  .dot { width: 6px; height: 6px; background: var(--dim); }
+  html[data-link="ok"] .dot { background: var(--state); }
   html[data-link="ok"] .linkstat .micro { color: var(--state); }
+  html[data-link="down"] .dot { background: var(--danger); }
+  .register { display: flex; align-items: stretch; border-left: 1px solid var(--rule); }
+  .register button {
+    appearance: none; border: 0; background: none; cursor: pointer; color: var(--muted);
+    font-family: var(--f-narrow); font-size: 10px; letter-spacing: .2em; text-transform: uppercase; padding: 0 14px;
+    transition: color 180ms var(--ease), background-color 180ms var(--ease);
+  }
+  .register button:hover { color: var(--ink); }
+  .register button[aria-pressed="true"] { color: var(--base); background: var(--ink); }
 
-  .stage { grid-area: stage; position: relative; overflow: hidden; display: grid; grid-template-rows: auto minmax(0, 1fr); gap: 18px; padding: 30px 40px 24px; background-color: var(--bg);
-    background-image: radial-gradient(rgba(244,246,246,0.05) 1px, transparent 1px), linear-gradient(rgba(24,209,255,0.045) 1px, transparent 1px), linear-gradient(90deg, rgba(24,209,255,0.045) 1px, transparent 1px);
-    background-size: 24px 24px, 96px 96px, 96px 96px; }
-  .stage-head .phase-tag { color: var(--signal); display: flex; align-items: center; gap: 10px; }
-  .stage-head .phase-tag::before { content: ""; width: 34px; height: 2px; background: var(--signal); }
-  .stage-head h1 { font-family: var(--font-display); font-weight: 700; font-size: clamp(30px, 3.6vw, 44px); text-transform: uppercase; line-height: 0.92; letter-spacing: -0.02em; margin: 10px 0 10px; }
-  .stage-head h1 .hollow { display: block; color: transparent; -webkit-text-stroke: 1px rgba(244,246,246,0.8); }
-  @supports not (-webkit-text-stroke: 1px black) { .stage-head h1 .hollow { color: var(--ink); } }
-  .stage-head .meta { display: flex; gap: 22px; flex-wrap: wrap; }
-  .stage-head .meta .mono { font-size: 11.5px; color: var(--muted); }
-  .stage-head .meta .mono b { color: var(--ink); font-weight: 400; }
+  /* ————————— 左轨（读数，不是导航：视图切换还没实现，就不假装能点） ————————— */
+  .rail { grid-area: rail; background: var(--shell); border-right: 1px solid var(--rule); display: flex; flex-direction: column; }
+  .rail .glyph { height: 52px; display: grid; place-items: center; border-bottom: 1px solid var(--rule); font-family: var(--f-display); font-size: 13px; color: var(--signal); }
+  .rail .item { padding: 16px 0; display: grid; gap: 10px; place-items: center; color: var(--dim); border-bottom: 1px solid var(--rule); }
+  .rail .item[aria-current="true"] { color: var(--ink); box-shadow: inset 3px 0 0 var(--signal); }
+  .rail .label { writing-mode: vertical-rl; font-family: var(--f-narrow); font-size: 10px; letter-spacing: .22em; text-transform: uppercase; }
+  .rail .idx { font-family: var(--f-display); font-size: 11px; }
+  .rail .grow { flex: 1; }
 
-  .stream { position: relative; z-index: 2; min-height: 0; overflow-y: auto; overscroll-behavior: contain; display: flex; flex-direction: column; gap: 12px; scrollbar-width: thin; scrollbar-color: var(--rule-strong) transparent; }
-  .entry { display: grid; gap: 6px; }
-  .entry .who { font-family: var(--font-tech); font-size: 10px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--muted); }
-  .entry.message .who { color: var(--ink); }
-  .entry.thought .who { color: var(--signal); }
-  .entry.user .who { color: var(--state); }
-  .entry .body { white-space: pre-wrap; font-size: 13px; line-height: 1.65; }
-  .entry.thought .body { color: var(--muted); font-family: var(--font-mono); font-size: 12px; line-height: 1.6; }
-  .entry.user .body { font-family: var(--font-cjk); }
+  /* ————————— 舞台 ————————— */
+  .stage {
+    grid-area: stage; position: relative; overflow: hidden;
+    display: grid; grid-template-rows: auto auto minmax(0, 1fr); gap: 16px; padding: 26px 34px 22px;
+    background:
+      radial-gradient(rgba(238,241,242,.055) 1px, transparent 1px) 0 0 / 26px 26px,
+      linear-gradient(rgba(53,200,240,.05) 1px, transparent 1px) 0 0 / 104px 104px,
+      linear-gradient(90deg, rgba(53,200,240,.05) 1px, transparent 1px) 0 0 / 104px 104px,
+      var(--base);
+  }
+  .bracket { position: absolute; width: 22px; height: 22px; pointer-events: none; }
+  .bracket::before, .bracket::after { content: ""; position: absolute; background: var(--rule-strong); }
+  .bracket::before { width: 100%; height: 1px; } .bracket::after { width: 1px; height: 100%; }
+  .b-tl { top: 12px; left: 12px; } .b-tr { top: 12px; right: 12px; transform: scaleX(-1); }
+  .b-bl { bottom: 12px; left: 12px; transform: scaleY(-1); } .b-br { bottom: 12px; right: 12px; transform: scale(-1); }
 
-  .tools { position: relative; z-index: 2; display: grid; gap: 6px; border-top: 1px solid var(--rule); padding-top: 12px; }
-  .tool { display: grid; grid-template-columns: 1fr auto; gap: 14px; align-items: baseline; }
-  .tool .title { font-size: 11.5px; letter-spacing: 0.1em; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .tool .status { font-family: var(--font-mono); font-size: 11.5px; color: var(--muted); }
-  .tool[data-status="completed"] .status { color: var(--state); }
+  .stage-head { position: relative; z-index: 2; }
+  .phase { display: flex; align-items: center; gap: 10px; color: var(--signal); }
+  .phase::before { content: ""; width: 30px; height: 2px; background: var(--signal); }
+  .phase .who { font-family: var(--f-mono); font-size: 10px; letter-spacing: .18em; }
+  h1 { font-family: var(--f-display); font-weight: 400; text-transform: uppercase; font-size: clamp(28px, 3.2vw, 44px); line-height: 1.04; letter-spacing: .01em; margin: 12px 0 10px; overflow-wrap: anywhere; }
+  h1 .cjk { font-family: var(--f-cjk); font-weight: 700; letter-spacing: .06em; }
+  h1 .hollow { display: block; color: transparent; -webkit-text-stroke: 1px rgba(238,241,242,.62); font-size: .7em; letter-spacing: .12em; }
+  @supports not (-webkit-text-stroke: 1px black) { h1 .hollow { color: var(--muted); } }
+  .meta-row { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
+  .meta-row .mono { font-size: 11px; color: var(--muted); }
+  .meta-row .mono b { color: var(--ink); font-weight: 500; }
+  .scanline { position: relative; height: 14px; margin-top: 12px; border-bottom: 1px solid var(--rule-mid); }
+  .scanline::after { content: ""; position: absolute; inset: auto 0 -4px 0; height: 4px; background: repeating-linear-gradient(90deg, var(--rule-mid) 0 1px, transparent 1px 14px); }
 
-  .dossier { grid-area: dossier; border-left: 1px solid var(--rule); background: var(--panel); overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--rule-strong) transparent; }
-  .blk { padding: 18px 22px; border-bottom: 1px solid var(--rule); }
-  .blk .head { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
-  .blk .head .code { color: var(--ink); }
-  .blk.strong { border-left: 2px solid var(--rule-strong); }
-  .blk .kv { display: grid; gap: 6px; }
-  .blk .kv .row { display: flex; justify-content: space-between; gap: 12px; }
-  .blk .kv .k { font-size: 10px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--muted); white-space: nowrap; }
-  .blk .kv .v { font-family: var(--font-mono); font-size: 11.5px; text-align: right; overflow-wrap: anywhere; }
-  .options { display: grid; gap: 10px; }
-  .options label { display: grid; gap: 5px; }
-  .options select { appearance: none; background: #0d1011; color: var(--ink); border: 1px solid var(--rule-control); padding: 7px 9px; font-family: var(--font-mono); font-size: 11.5px; }
-  .options .empty { color: var(--muted); font-family: var(--font-mono); font-size: 11.5px; }
+  .anchor { position: relative; z-index: 2; display: flex; align-items: flex-end; gap: 14px; }
+  .anchor .num { font-family: var(--f-display); font-size: clamp(76px, 11vw, 152px); line-height: .84; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+  .anchor .unit { font-family: var(--f-narrow); font-size: 15px; color: var(--muted); padding-bottom: 15px; letter-spacing: .1em; }
+  .anchor .verdict { padding-bottom: 17px; display: grid; gap: 7px; }
+  .anchor .line1 { display: flex; align-items: center; gap: 9px; }
+  .breath { width: 24px; height: 11px; background: var(--signal); opacity: .3; }
+  html[data-busy="true"] .breath { animation: breathe 1.9s ease-in-out infinite; opacity: 1; }
+  .v-word { font-family: var(--f-display); font-size: 13px; letter-spacing: .22em; text-transform: uppercase; color: var(--signal); }
+  .v-sub { font-family: var(--f-mono); font-size: 11px; color: var(--muted); letter-spacing: .06em; }
 
-  .baseline { grid-area: base; border-top: 1px solid var(--rule); background: #050607; display: grid; grid-template-columns: auto minmax(160px, 1fr) auto; align-items: stretch; }
-  .actions { display: flex; align-items: stretch; }
-  .actions button { appearance: none; border: none; cursor: pointer; background: var(--signal); color: var(--on-signal); font-family: var(--font-display); font-weight: 700; font-size: 13px; letter-spacing: 0.16em; text-transform: uppercase; padding: 0 20px; min-height: 48px; transition: background-color 240ms var(--ease), color 240ms var(--ease); }
-  .actions button:hover { background: var(--ink); color: var(--bg); }
-  .actions button[disabled] { background: none; color: var(--muted); cursor: default; }
-  .cmd { display: flex; align-items: center; gap: 12px; border-left: 1px solid var(--rule); padding: 0 18px; min-width: 0; }
-  .cmd .prompt-char { color: var(--signal); font-family: var(--font-mono); font-size: 13px; }
-  .cmd input { flex: 1; min-width: 0; background: none; border: none; outline: none; color: var(--ink); font-family: var(--font-mono); font-size: 13px; caret-color: var(--signal); }
-  .cmd input::placeholder { color: var(--muted); letter-spacing: 0.12em; }
+  /* ————————— 流 ————————— */
+  .feed-wrap { position: relative; z-index: 2; min-height: 0; display: flex; flex-direction: column; gap: 10px; }
+  .stream { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: var(--rule-mid) transparent; display: flex; flex-direction: column; gap: 12px; }
+  .stream::-webkit-scrollbar { width: 9px; } .stream::-webkit-scrollbar-thumb { background: var(--rule-mid); }
+  .entry { display: grid; gap: 5px; }
+  .entry .who { font-family: var(--f-narrow); font-size: 10px; letter-spacing: .2em; text-transform: uppercase; color: var(--muted); }
+  .entry.message .who { color: var(--ink); } .entry.thought .who { color: var(--signal); } .entry.user .who { color: var(--state); }
+  .entry .body { white-space: pre-wrap; font-size: 13px; line-height: 1.66; overflow-wrap: anywhere; }
+  .entry.thought .body { color: var(--muted); font-family: var(--f-mono); font-size: 12px; line-height: 1.6; }
+  .entry.user .body { font-family: var(--f-cjk); }
+  .stamp { font-family: var(--f-record); font-size: 11.5px; color: var(--dim); border-top: 1px solid var(--rule); padding-top: 9px; }
+
+  /* ————————— 档案栏 ————————— */
+  .dossier { grid-area: dossier; background: var(--panel); border-left: 1px solid var(--rule); overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--rule-mid) transparent; }
+  .panel { position: relative; border-bottom: 1px solid var(--rule); padding: 16px 18px 14px; }
+  .panel::before, .panel::after { content: ""; position: absolute; width: 9px; height: 9px; border-color: var(--rule-strong); border-style: solid; }
+  .panel::before { top: 6px; left: 6px; border-width: 1px 0 0 1px; }
+  .panel::after { bottom: 6px; right: 6px; border-width: 0 1px 1px 0; }
+  .panel.alert { box-shadow: inset 2px 0 0 var(--signal); }
+  .panel .head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; margin-bottom: 10px; }
+  .panel .head .code { color: var(--ink); font-family: var(--f-narrow); font-size: 10px; letter-spacing: .2em; }
+  .row { display: flex; justify-content: space-between; gap: 12px; padding: 5px 0; }
+  .row .k { font-family: var(--f-narrow); font-size: 10px; letter-spacing: .16em; text-transform: uppercase; color: var(--muted); white-space: nowrap; }
+  .row .v { font-family: var(--f-mono); font-size: 11.5px; text-align: right; overflow-wrap: anywhere; }
+  .row.hover:hover { background: var(--ink); }
+  .row.hover:hover .k, .row.hover:hover .v { color: var(--base); }
+
+  .diamond { font-size: 11px; } .d-done { color: var(--state); } .d-run { color: var(--signal); } .d-none { color: var(--dim); }
+  html[data-busy="true"] .d-run { animation: pulse 1.9s ease-in-out infinite; }
+
+  .options { display: grid; gap: 9px; }
+  .options label { display: grid; gap: 4px; }
+  .options select { appearance: none; background: var(--raised); color: var(--ink); border: 1px solid var(--rule-control); padding: 7px 9px; font-family: var(--f-mono); font-size: 11.5px; cursor: pointer; transition: border-color 180ms var(--ease); }
+  .options select:hover { border-color: var(--signal); }
+  .options .empty { font-family: var(--f-mono); font-size: 11.5px; color: var(--dim); }
+  .expert-only[hidden] { display: none; }
+
+  /* ————————— 底部坞 ————————— */
+  .baseline { grid-area: base; background: var(--shell); border-top: 1px solid var(--rule); display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: stretch; }
+  .cmd { display: flex; align-items: center; gap: 10px; padding: 0 18px; min-width: 0; }
+  .cmd .caret { color: var(--signal); font-family: var(--f-mono); }
+  .cmd input { flex: 1; min-width: 0; background: none; border: 0; outline: none; color: var(--ink); font-family: var(--f-mono); font-size: 13px; caret-color: var(--signal); }
+  .cmd input::placeholder { color: var(--dim); letter-spacing: .12em; }
+  .btn {
+    appearance: none; background: none; cursor: pointer; color: var(--ink); border: 0; border-left: 1px solid var(--rule);
+    padding: 0 20px; min-height: 52px; font-family: var(--f-narrow); font-size: 11px; letter-spacing: .2em; text-transform: uppercase;
+    transition: background-color 180ms var(--ease), color 180ms var(--ease);
+  }
+  .btn:hover { background: var(--ink); color: var(--base); }
+  .btn.primary { background: var(--signal); color: #04252c; }
+  .btn.primary:hover { background: var(--ink); color: var(--base); }
+  .btn[disabled] { color: var(--dim); cursor: default; }
+  .btn[disabled]:hover { background: none; color: var(--dim); }
+
   button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
+  .register button:focus-visible { outline-offset: -3px; outline-color: currentColor; }
   .cmd input:focus-visible { outline-offset: -2px; }
+
+  @keyframes breathe { 0%, 100% { opacity: .3 } 50% { opacity: 1 } }
+  @keyframes pulse { 0%, 100% { opacity: 1 } 50% { opacity: .4 } }
   @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+  @media (max-width: 1120px) { body { grid-template-columns: 52px minmax(0, 1fr) 300px; } }
+  @media (max-width: 880px) {
+    body { grid-template-columns: 1fr; grid-template-rows: auto auto minmax(0, 1fr) auto auto; grid-template-areas: "top" "rail" "stage" "dossier" "base"; overflow: auto; height: auto; min-height: 100vh; }
+    .rail { flex-direction: row; } .rail .grow { display: none; } .rail .label { writing-mode: horizontal-tb; }
+    .rail .item { padding: 10px 14px; display: flex; gap: 8px; box-shadow: none; }
+    .rail .item[aria-current="true"] { box-shadow: inset 0 -3px 0 var(--signal); }
+    .baseline { position: sticky; bottom: 0; z-index: 5; }
+  }
 </style>
 </head>
 <body>
   <header class="topbar">
-    <div class="brand"><span class="wordmark">T3RRA</span><span class="micro sub">CONSOLE</span></div>
-    <div class="slot"><span class="micro">ENGINE</span><span class="value" id="engine">—</span></div>
+    <div class="brand"><span class="mark">T3RRA</span><span class="sub">console</span></div>
+    <div class="slot"><span class="micro">ENGINE</span><span class="value" id="engine">NOT STATED</span></div>
     <div class="slot"><span class="micro">SESSION</span><span class="value" id="sessionId">NOT STATED</span></div>
     <div class="spacer"></div>
-    <div class="slot linkstat"><span class="dot" aria-hidden="true"></span><span class="micro" id="linkLabel">LINK DOWN</span></div>
-    <div class="slot"><span class="micro">UNMAPPED</span><span class="value" id="unmapped">0</span></div>
+    <div class="slot linkstat"><span class="dot"></span><span class="micro" id="linkLabel">LINK DOWN</span></div>
+    <div class="register" role="group" aria-label="register">
+      <button type="button" id="regOperator" aria-pressed="true">OPERATOR</button>
+      <button type="button" id="regExpert" aria-pressed="false">EXPERT</button>
+    </div>
   </header>
 
+  <nav class="rail" aria-label="views">
+    <div class="glyph">◈</div>
+    <div class="item" aria-current="true" title="视图切换还没实现：这里只做读数，不做导航"><span class="idx">01</span><span class="label">Process</span></div>
+    <div class="item" title="视图切换还没实现"><span class="idx">02</span><span class="label">Events</span></div>
+    <div class="grow"></div>
+    <div class="item" title="多会话还没实现"><span class="idx">＋</span><span class="label">New</span></div>
+  </nav>
+
   <main class="stage">
+    <span class="bracket b-tl"></span><span class="bracket b-tr"></span><span class="bracket b-bl"></span><span class="bracket b-br"></span>
+
     <div class="stage-head">
-      <div class="micro phase-tag" id="phase">[ IDLE ]</div>
-      <h1>Agent Stream <span class="hollow">Live</span></h1>
-      <div class="meta">
-        <span class="mono">ENGINE <b id="engineMeta">NOT STATED</b></span>
-        <span class="mono">STOP <b id="stopReason">NOT REPORTED</b></span>
+      <div class="phase"><span class="micro who" id="phase">[ STARTING ]</span><span class="micro" id="phaseNote">BYTES ONLY · NO ENGINE YET</span></div>
+      <h1><span id="topic">Awaiting Instruction</span><span class="hollow" id="hollowLine">No Session Title</span></h1>
+      <div class="meta-row">
+        <span class="mono">ENGINE <b id="metaEngine">NOT STATED</b></span>
+        <span class="mono">MODEL <b id="metaModel">NOT DECLARED</b></span>
+        <span class="mono">MODE <b id="metaMode">NOT DECLARED</b></span>
+      </div>
+      <div class="scanline" aria-hidden="true"></div>
+    </div>
+
+    <div class="anchor">
+      <span class="num" id="anchorNum">—</span>
+      <span class="unit" id="anchorUnit"></span>
+      <div class="verdict">
+        <div class="line1"><span class="breath"></span><span class="v-word" id="verdict">Idle</span></div>
+        <div class="v-sub" id="compare">NO RUN IN FLIGHT · SILENCE NOT MEASURED</div>
       </div>
     </div>
-    <div>
+
+    <div class="feed-wrap">
       <div class="stream" id="stream" aria-live="polite" aria-label="agent stream"></div>
-      <div class="tools" id="tools" aria-label="tool calls"></div>
+      <div class="stamp" id="stamp">no session filed</div>
     </div>
   </main>
 
   <aside class="dossier">
-    <section class="blk strong">
-      <div class="head"><span class="micro code">[ OPTIONS ]</span><span class="micro">RUNTIME-DECLARED</span></div>
+    <section class="panel">
+      <div class="head"><span class="code">[ SESSION ]</span><span class="micro">RUNTIME</span></div>
+      <div class="row hover"><span class="k">SESSION</span><span class="v" id="pSession">NOT STATED</span></div>
+      <div class="row hover"><span class="k">STARTED</span><span class="v" id="pStarted">NOT STATED</span></div>
+      <div class="row hover"><span class="k">STOP</span><span class="v" id="pStop">NOT REPORTED</span></div>
+      <div class="row hover"><span class="k">APPROVAL</span><span class="v" id="pPermission">NOT REQUESTED</span></div>
+    </section>
+
+    <section class="panel">
+      <div class="head"><span class="code">[ OPTIONS ]</span><span class="micro">RUNTIME-DECLARED</span></div>
       <div class="options" id="options"><div class="empty">NOT DECLARED YET</div></div>
     </section>
-    <section class="blk">
-      <div class="head"><span class="micro code">[ TRANSPORT ]</span><span class="micro">BYTES ONLY</span></div>
-      <div class="kv">
-        <div class="row"><span class="k">BINARY</span><span class="v" id="binary">—</span></div>
-        <div class="row"><span class="k">CWD</span><span class="v" id="cwd">—</span></div>
-        <div class="row"><span class="k">EXIT</span><span class="v" id="exit">—</span></div>
-        <div class="row"><span class="k">LAST ERROR</span><span class="v" id="lastError">NONE</span></div>
-      </div>
+
+    <section class="panel">
+      <div class="head"><span class="code">[ TOOLS ]</span><span class="micro">DIAMOND GRAMMAR</span></div>
+      <div id="tools"><div class="row"><span class="k"><span class="diamond d-none">◇</span> none</span><span class="v">no tool call yet</span></div></div>
     </section>
-    <section class="blk">
-      <div class="head"><span class="micro code">[ APPROVAL ]</span><span class="micro">OPERATOR ACTION</span></div>
-      <div class="kv">
-        <div class="row"><span class="k">REQUEST</span><span class="v" id="permission">NOT REQUESTED</span></div>
-      </div>
+
+    <section class="panel expert-only" id="transportPanel" hidden>
+      <div class="head"><span class="code">[ TRANSPORT ]</span><span class="micro">EXPERT · BYTES ONLY</span></div>
+      <div class="row hover"><span class="k">BINARY</span><span class="v" id="pBinary">NOT STATED</span></div>
+      <div class="row hover"><span class="k">CWD</span><span class="v" id="pCwd">NOT STATED</span></div>
+      <div class="row hover"><span class="k">EXIT</span><span class="v" id="pExit">—</span></div>
+      <div class="row hover"><span class="k">LAST ERROR</span><span class="v" id="pLastError">NONE</span></div>
+      <div class="row hover"><span class="k">UNMAPPED</span><span class="v" id="pUnmapped">0</span></div>
+      <div class="row hover"><span class="k">PROVENANCE</span><span class="v" id="pProvenance">NOT STATED</span></div>
     </section>
   </aside>
 
   <footer class="baseline">
-    <div class="actions"><button type="button" id="promptSubmit">SEND ▶</button></div>
-    <label class="cmd">
-      <span class="prompt-char" aria-hidden="true">&gt;</span>
-      <input type="text" id="promptInput" placeholder="AWAITING COMMAND" aria-label="command input">
+    <label class="cmd"><span class="caret" aria-hidden="true">&gt;</span>
+      <input type="text" id="promptInput" placeholder="STARTING ENGINE" aria-label="command input" disabled>
     </label>
-    <div class="actions"><button type="button" id="restart" title="kill the engine process and spawn it again">RESTART ⟲</button></div>
+    <button type="button" class="btn primary" id="promptSubmit" disabled>SEND ↵</button>
+    <button type="button" class="btn" id="restart">RESTART ⟲</button>
   </footer>
 
   <script type="module" src="/src/main.ts"></script>
