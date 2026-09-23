@@ -21,7 +21,43 @@ A「只调研不放码，工程在 core」、B「保留 core 界面只换引擎�
 
 ## 2026-09-23
 
-- **工程写在本工作区**（`C:\DEV\develop\t3rra-C0d3`），产品代码的落点建议 `app/`。
+### 工程闸门（写产品代码之前先立起来）
+
+四道闸都在 `npm run check:all` 里，**提交前必须全绿**：
+
+| 闸 | 命令 | 管什么 |
+| --- | --- | --- |
+| 类型 | `npm run check` | `tsc --noEmit`（strict；覆盖 `app/` 与 `test/`） |
+| 单测 | `npm test` | vitest（9 条：引擎解析次序、trace 采集、文档解析、范本静态规则） |
+| 范本 | `npm run check:demo` | 自包含 / 无重复 id / JS 引用的 id 都在 / 无悬空 class / reduced-motion / 内联脚本可解析 |
+| 文档↔报文 | `npm run check:traces` | 适配器表里每条【实测】都必须有 trace 垫底；trace 里出现的 kind 必须在表里 |
+
+**规矩**：闸红了不许提交；**不许为了让闸变绿而放宽闸**——要么改结论，要么补证据。
+`check:traces` 第一次运行就是靠这条抓出我两处"只在控制台输出、没落盘"的结论。
+
+### 盲审（2026-09-23）指出的问题与处置
+
+| 盲审条目 | 处置 |
+| --- | --- |
+| 文档多真相源、三套叙事并存 | **已止血**：代际表 + 单一权威（本文件）+ 历史文件打【仅历史】标签 |
+| 零工程闸门 | **已建**：见上表，四道闸全绿 |
+| "实测"有两条没落盘（`effort`、load 时序） | **已补证据**（不是改小结论）：探针现在把 `load_timing` 与逐模型 option 清单写进 trace，文档引用该 trace |
+| 范本模式组与引擎脱节（`ASK/DO/PLAN` vs 引擎的 `build/plan`） | **已改**：范本改成 `BUILD / PLAN`，并注明清单来自运行时、界面只渲染 |
+| 跨仓探针依赖旧仓 dev bridge | **已删** `spike/probe-bridge-opencode.mjs`（重写后的应用会有自己的传输层检查） |
+| 单点故障（验收只靠人眼） | **部分处置**：可机读的部分已清单化（重复 id / 悬空 class / 引用齐全 / 文档对账）；**渲染观感永远归人眼**（无头禁令不变） |
+| 四件事没人拍板 | **仍待拍板** ↓ |
+
+### 待仓库主人拍板（盲审逼出来的四件）
+
+1. **"继承规则、不继承代码"是否确认**（规则原文在旧仓 `AGENTS.md` §二、`docs/event-model.md`、`docs/adapters/acp.md`）。
+2. **目标平台是否只有 Windows**（决定外壳选型成不成立；Linux/WebKitGTK 的坑见 `adapters/opencode-acp.md` §六.6）。
+3. **重写范围**：新的 `AgentSource` 是否复用旧仓的 `state.ts` / `derive.ts`
+   （建议：**只继承规则与数据形状，实现新写**——旧实现与旧引擎的怪癖绑在一起）。
+4. **验收方式**：是否接受"机读清单 + owner 抽查"来打破纯人眼单点（渲染观感仍归人眼）。
+
+### 本轮其它决定
+
+- **工程写在本工作区**（`C:\DEV\develop\t3rra-C0d3`），产品代码的落点 `app/`。
   `NIX\t3rra-core` 是上一版实现，改它之前先问仓库主人。
 - **引擎方向：opencode**（ACP v1）。依据不是推测而是本机实测：`docs/adapters/opencode-acp.md`
   与 `traces/opencode/`、`spike/`。四个核心判据已闭合（报文存在性、options、`session/load` 回放、审批）。

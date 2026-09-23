@@ -770,8 +770,8 @@
       <button type="button" id="haltbtn">▶ HALT</button>
     </div>
     <div class="modes" id="modes" role="group" aria-label="command mode">
-      <button type="button" data-mode="ask" aria-pressed="false">ASK</button>
-      <button type="button" data-mode="do" aria-pressed="true">DO</button>
+      <!-- 清单来自运行时（configOptions.mode），实测只有 build / plan 两档；界面只渲染，不建白名单 -->
+      <button type="button" data-mode="build" aria-pressed="true">BUILD</button>
       <button type="button" data-mode="plan" aria-pressed="false">PLAN</button>
     </div>
     <label class="cmd">
