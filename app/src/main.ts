@@ -13,6 +13,7 @@
  */
 
 import { translateLine } from "./engine/acp.ts";
+import { mapResponse } from "./engine/responses.ts";
 import type { AgentEvent } from "./contract/events.ts";
 import { createBridgeTransport, type Transport } from "./engine/transport.ts";
 import { emptyView, reduceView, type ConsoleView } from "./view/derive.ts";
@@ -51,34 +52,25 @@ const send = (method: string, params: unknown): number => {
 
 /** Responses carry facts the notifications do not: the session id and the option menu. */
 const handleResponse = (id: number, method: string, result: unknown): boolean => {
-  if (method === "initialize") {
-    const info = (result as { agentInfo?: { name?: string; version?: string } }).agentInfo;
-    const name = [info?.name, info?.version].filter((part) => part !== undefined && part !== "").join(" ");
-    patch({ engine: name === "" ? "NOT STATED" : name });
-    return true;
+  const mapping = mapResponse(method, result);
+  if (mapping.agentName !== undefined) patch({ engine: mapping.agentName });
+  if (mapping.sessionId !== undefined) {
+    patch({
+      sessionId: mapping.sessionId,
+      startedAt: new Date().toISOString().replace("T", " ").slice(0, 19),
+      phase: "[ READY ]",
+      phaseNote: "AWAITING INSTRUCTION · SESSION OPEN",
+    });
+    ui.setCommandEnabled(true);
+    ui.setPlaceholder("AWAITING COMMAND");
   }
-  if (method === "session/new") {
-    const payload = result as { sessionId?: string; configOptions?: readonly unknown[] };
-    const events: AgentEvent[] = [];
-    if (typeof payload.sessionId === "string") {
-      events.push({ kind: "session.opened" as const, from: { method: "session/new.response", variant: undefined }, sessionId: payload.sessionId });
-      patch({
-        sessionId: payload.sessionId,
-        startedAt: new Date().toISOString().replace("T", " ").slice(0, 19),
-        phase: "[ READY ]",
-        phaseNote: "AWAITING INSTRUCTION · SESSION OPEN",
-      });
-      ui.setCommandEnabled(true);
-      ui.setPlaceholder("AWAITING COMMAND");
+  if (mapping.events.length > 0) apply(mapping.events);
+  for (const event of mapping.events) {
+    if (event.kind === "prompt.ended") {
+      patch({ busy: false, phase: "[ READY ]", phaseNote: `TURN ENDED · ${event.stopReason.toUpperCase()}` });
     }
-    const optionsEvent = translateLine(
-      JSON.stringify({ jsonrpc: "2.0", method: "session/update", params: { update: { sessionUpdate: "config_option_update", configOptions: payload.configOptions ?? [] } } }),
-    );
-    events.push(...optionsEvent.events);
-    apply(events);
-    return true;
   }
-  return false;
+  return mapping.recognised;
 };
 
 const handleLine = (line: string): void => {
@@ -99,11 +91,6 @@ const handleLine = (line: string): void => {
   if (id !== undefined && method !== undefined && parsed !== undefined && handleResponse(id, method, parsed.result)) return;
   apply(translateLine(line).events);
 
-  // The turn is over when the engine says so; the stage stops claiming to be busy at once.
-  const stop = translateLine(line).events.find((event) => event.kind === "prompt.ended");
-  if (stop !== undefined && stop.kind === "prompt.ended") {
-    patch({ busy: false, phase: "[ READY ]", phaseNote: `TURN ENDED · ${stop.stopReason.toUpperCase()}` });
-  }
 };
 
 const handshake = async (): Promise<void> => {
