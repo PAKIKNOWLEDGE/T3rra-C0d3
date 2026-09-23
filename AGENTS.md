@@ -60,11 +60,22 @@
 ## 四、阅读顺序
 
 1. 本文件
-2. [`docs/design-contract.md`](./docs/design-contract.md)（界面标准答案）
-3. [`docs/design-critique.md`](./docs/design-critique.md)（反面清单）
-4. [`docs/design-review.md`](./docs/design-review.md)（范本盲审：已修/未修、待裁决的契约修订、验收清单）
-5. [`docs/recommendation.md`](./docs/recommendation.md)（后端结论与下一步）
-6. [`docs/adapters/opencode-acp.md`](./docs/adapters/opencode-acp.md)（候选引擎的实测映射表：报文全集、契约行为、有损列、未闭合项）
-7. [`docs/status.md`](./docs/status.md)（**现状与决定：唯一允许写"我在做什么/决定了什么"的地方，带日期**）
-8. 相邻仓库只读：需要规则原文时读 `NIX\t3rra-core\AGENTS.md`、`docs\event-model.md`、`docs\adapters\acp.md`；
-   **在里面动手之前先问仓库主人**
+2. [`docs/status.md`](./docs/status.md)（**现行真相**：代际表、已决定的事、**仓库主人的验收清单**）
+3. [`docs/handover.md`](./docs/handover.md)（**交接单**：真做完了什么／只做了一半什么／完全没做的是什么、规矩与坑、下一步怎么做）
+4. [`docs/visual-guide.md`](./docs/visual-guide.md)（**做视觉先读这份**：四條硬约束 + 视觉可重构的边界）
+5. [`docs/design-contract.md`](./docs/design-contract.md)（界面做法记录；§二 起都是可替换的"做法"）
+6. [`docs/design-critique.md`](./docs/design-critique.md)（反面清单）、[`docs/design-review.md`](./docs/design-review.md)（范本盲审）
+7. [`docs/recommendation.md`](./docs/recommendation.md)（后端结论）、[`docs/adapters/opencode-acp.md`](./docs/adapters/opencode-acp.md)（引擎实测映射表）
+8. 旧仓库 `NIX\t3rra-core` **只读**：需要规则原文时读它的 `AGENTS.md`、`docs/event-model.md`、`docs/adapters/acp.md`；
+   **改它之前先问仓库主人**（它的工作树本来就是脏的）
+
+## 五、开工前必须知道的四条硬规矩
+
+1. **"已知未做/只做了一半" 必须与 "已完成" 并列出现在汇报里。** 不许只写进代码注释或 tooltip——
+   上一任就是把三个死按键写成 `<div>`（正好落在我自己闸的扫描范围之外），再拿"无悬空控件"当交付证据。
+2. **元素清单制**：`app/ui-manifest.json` 里每个能被看见/被点到的元素都必须表态（`wired` 或 `static: 理由`）；
+   没分类、清单陈旧、声称 wired 但代码里没引用 → `npm run check:app` 变红。
+   *这个机制保证"存在必须被表态"，不保证"有用"——有用只有主人的手能判。*
+3. **无头浏览器禁用**；**不许声称看过渲染结果**；交付界面 = 可双击路径 + 3–5 条"看什么"，等主人的眼睛。
+4. **别在别人的工作树上用整文件回滚**（上一任在旧仓 `git checkout --` 连带毁掉别人 338 字节未提交改动）。
+   回滚自己的改动之前先看 `git status`；或者 `git stash` / 先复制备份。
