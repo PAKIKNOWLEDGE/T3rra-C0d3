@@ -66,21 +66,56 @@ for (const [, tag, attributes] of controls) {
 
 // Blind spot that let a real violation through: three rail items were written as <div>s, so the
 // control check above never looked at them and the gate stayed green while the screen showed
-// three dead keys. Anything that *reads* as interactive has to be a control, whatever tag it is.
+// three dead keys. The fix is not a smarter smell test — it is a *manifest*: every element a
+// user can see must be classified (wired, or static with a stated reason). An element nobody
+// classified fails the build, so "I forgot to count it" cannot happen quietly again.
+const MANIFEST = "app/ui-manifest.json";
+const CONTROLS = new Set(["BUTTON", "SELECT", "INPUT", "TEXTAREA", "A"]);
 const CLICKABLE_SMELLS = [/\stitle="/, /\saria-current="/, /\scursor:\s*pointer/, /\shover:\s*/];
-const NAV_TAGS = new Set(["BUTTON", "SELECT", "INPUT", "A", "TEXTAREA"]);
+const BODY_TAGS = new Set(["DIV", "SPAN", "LI", "SECTION", "ASIDE", "NAV", "MAIN", "HEADER", "FOOTER", "LABEL"]);
+
+const mustClassify = new Map();
 for (const [tag, attributes] of [...body.matchAll(/<([a-z][a-z0-9-]*)\b([^>]*)>/gi)].map((m) => [m[1].toUpperCase(), m[2]])) {
-  if (NAV_TAGS.has(tag)) continue;
-  if (["DIV", "SPAN", "LI", "SECTION", "ASIDE", "NAV", "MAIN", "HEADER", "FOOTER", "LABEL"].includes(tag) === false) continue;
   const id = /\sid="([^"]+)"/.exec(attributes);
-  const named = id !== null && (tsText.includes(`"${id[1]}"`) || tsText.includes(`'${id[1]}'`));
-  if (named) continue; // a container the script drives is not a fake control
-  const smells = CLICKABLE_SMELLS.filter((pattern) => pattern.test(attributes)).length;
-  if (smells > 0) {
-    failures.push(
-      `<${tag.toLowerCase()}${id === null ? "" : ` id="${id[1]}"`}> looks interactive (${smells} cue(s)) but is not a control the script drives — make it real or make it plainly static`,
-    );
+  const isControl = CONTROLS.has(tag);
+  const smells = CLICKABLE_SMELLS.some((pattern) => pattern.test(attributes));
+  if (!isControl && !(BODY_TAGS.has(tag) && smells)) continue;
+  if (id === null) {
+    failures.push(`<${tag.toLowerCase()}> is a control or looks like one but has no id, so it cannot be classified`);
+    continue;
   }
+  mustClassify.set(id[1], { tag, attributes });
+}
+
+if (!existsSync(MANIFEST)) {
+  failures.push(`${MANIFEST} is missing: every visible element must be classified (wired, or static with a reason)`);
+} else {
+  const manifest = JSON.parse(readFileSync(MANIFEST, "utf8"));
+  const classified = manifest.elements ?? {};
+  for (const [id, { tag, attributes }] of mustClassify) {
+    const entry = classified[id];
+    if (entry === undefined) {
+      failures.push(`#${id} (<${tag.toLowerCase()}>) is not classified in ${MANIFEST} — wired, or static with a reason`);
+      continue;
+    }
+    if (entry.wired === true && !tsText.includes(`"${id}"`) && !tsText.includes(`'${id}'`)) {
+      failures.push(`#${id} claims wired but nothing in app/**/*.ts refers to it`);
+    }
+    if (entry.wired !== true && typeof entry.static !== "string") {
+      failures.push(`#${id} must be either "wired": true or "static": "<reason>"`);
+    }
+    if (entry.wired !== true && /\stitle="/.test(attributes)) {
+      // A tooltip is not a reason a user can act on; the manifest is where the reason belongs.
+      notes.push(`#${id} carries a title tooltip; its reason is recorded in the manifest`);
+    }
+  }
+  const shellIds = new Set([...html.matchAll(/\sid="([^"]+)"/g)].map((m) => m[1]));
+  for (const id of Object.keys(classified)) {
+    // Stale means "the shell no longer has this element" — not "it carries no interactive cue".
+    // Containers are legitimately classified even though the smell test ignores them.
+    if (!shellIds.has(id)) failures.push(`${MANIFEST} classifies #${id}, which ${SHELL} does not contain (stale entry)`);
+  }
+  notes.push(`${mustClassify.size} visible element(s) classified`);
 }
 
 // Static text only: scripts, styles and comments are not what the operator reads.

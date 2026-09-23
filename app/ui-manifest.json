@@ -1,0 +1,69 @@
+{
+  "note": [
+    "Every element in app/index.html that a user can see or act on must be classified here.",
+    "`wired` = the module script drives it. `static` = it is not a control, and this is why.",
+    "check:app fails when an element is unclassified, when a manifest entry names something the",
+    "shell no longer has, or when a `wired` claim has no reference in app/**/*.ts.",
+    "Why this file exists: three rail items were written as <div>s, so the control scan never saw",
+    "them, and they stayed dead while every gate reported green. A gap can hide by simply not",
+    "being counted; this file makes not-counting a build failure."
+  ],
+  "elements": {
+    "regOperator": {
+      "wired": true,
+      "role": "register: operator"
+    },
+    "regExpert": {
+      "wired": true,
+      "role": "register: expert reveals transport facts"
+    },
+    "viewProcess": {
+      "wired": true,
+      "role": "rail: conversation view"
+    },
+    "viewEvents": {
+      "wired": true,
+      "role": "rail: raw event log"
+    },
+    "promptInput": {
+      "wired": true,
+      "role": "dock: command input"
+    },
+    "promptSubmit": {
+      "wired": true,
+      "role": "dock: send the instruction"
+    },
+    "restart": {
+      "wired": true,
+      "role": "dock: kill and respawn the engine process"
+    },
+    "modes": {
+      "static": "container only; the runtime's mode chips are created inside it by the renderer"
+    },
+    "options": {
+      "static": "container only; selects are created from the runtime's configOptions"
+    },
+    "tools": {
+      "static": "container only; tool rows are created from the event stream"
+    },
+    "stream": {
+      "static": "container only; message and reasoning blocks are created from the stream"
+    },
+    "eventsList": {
+      "static": "container only; the event log rows are created by the renderer"
+    },
+    "eventsView": {
+      "static": "the EVENTS surface itself; reached by the viewEvents button"
+    },
+    "processView": {
+      "static": "the PROCESS surface itself; reached by the viewProcess button"
+    },
+    "transportPanel": {
+      "static": "panel shown or hidden by the register; contains no controls"
+    },
+    "newSession": {
+      "wired": true,
+      "role": "rail: open a fresh session"
+    }
+  }
+}
