@@ -55,6 +55,79 @@ A「只调研不放码，工程在 core」、B「保留 core 界面只换引擎�
    （建议：**只继承规则与数据形状，实现新写**——旧实现与旧引擎的怪癖绑在一起）。
 4. **验收方式**：是否接受"机读清单 + owner 抽查"来打破纯人眼单点（渲染观感仍归人眼）。
 
+### 仓库主人确认的四条边界（2026-09-23，当面确认）
+
+1. **继承规则、不继承代码**：规则原文只读对照旧仓（`AGENTS.md` §二 1–25、`docs/event-model.md`、
+   `docs/adapters/acp.md`），**旧仓绝对不许写**（工作树是脏的）。
+   本工作区的「现行有效规则全集」在 [`rules-inherited.md`](./rules-inherited.md)（含 §二 8–9、22–25 这些
+   原先漏掉的条目），其中视觉 13–18 声明由 [`design-contract.md`](./design-contract.md) 取代。
+   旧仓的**代码 / 测试 / traces 都不进 `app/`**。
+2. **平台**：主平台 **Windows + WebView2**，外壳按 **Tauri** 立项，第一版验收**只含 Windows**；
+   **NixOS 登记为 P2**（现在不做、也不排除，不写成"仅 Windows"）。跨平台打包那天再重审 WebKitGTK 的账。
+   架构上现在就要守：**壳只搬字节、不认识事件词汇**；引擎定位顺序 **PATH → 已知安装位置 → 手填**，
+   **禁止写死主机路径、路径用可移植拼接**；字体栈保留非 Windows 回退。
+3. **重写范围**：**只继承规则与数据形状，实现全部新写**。禁止 import / 复制旧仓
+   `state.ts` / `derive.ts` / `acp.ts` / `events.ts` 等实现。允许对照抄走的只有语义与形状
+   （事件与会话折叠的数据形状、`from` 溯源约定、相位与静默判据的数值）。
+   理由：旧实现与 omp 怪癖、Endfield 渲染、脏工作树缠在一起，**搬文件 = 搬坑**。
+4. **验收**：**机读清单 + 主人抽查**。机读部分（无重复 id、无悬空 class、文档相对链接可解析、
+   文档声称的 kind ⊆ traces 实际 kind）进 script；**渲染观感/布局/动效/对比度终判归主人的眼睛**；
+   **无头禁令不动**，交付界面时给可双击路径 + 人话说明看什么。
+
+### 第一版里程碑达成（2026-09-23，仓库主人实机确认）
+
+**`app/` 已可跑：引擎 = opencode（ACP），发一句话、流式上屏正常。** 打开方式：
+
+```
+npm run dev              # 默认顺序（omp 优先）；本项目用：
+$env:T3RRA_ENGINE="opencode"; npm run dev     # → http://localhost:5191/
+```
+
+链路证据（三层，逐层可复现）：
+
+| 层 | 怎么验 | 结果 |
+| --- | --- | --- |
+| 引擎 × ACP | `node spike/spike-acp-opencode.mjs --prompt --model <free-model>` | 真 prompt：17 条 update、`end_turn`、免费模型零成本 |
+| 引擎 × 应用的 dev bridge | `node spike/probe-sse-http.mjs` | 纯 `node:http` 读 SSE：initialize 3.8s、session/new 4.9s 到帧（**桥是好的**） |
+| 桥 × adapter × reducer | `node spike/probe-app-pipeline.mjs` | prompt → 57s 起流出 thought/message chunk → `stopReason` 返回 |
+| SSE × DOM | **主人的眼睛**（`http://localhost:5191/`） | **正常**（2026-09-23 确认） |
+
+**教训（写进探针文件头）**：用 `fetch()` 的 body reader 读长连接 SSE 会被 undici 压住，
+会伪造出"引擎沉默"的假象——测 SSE 用 `node:http`，或直接用 `EventSource`（应用就是这么做的）。
+
+### runtime 成熟度评估（2026-09-23，全部基于本机实测）
+
+**结论：够用的"能用"级，不是"成熟稳定"级。** 风险集中在大版本破坏与 HTTP 面，而我们走 ACP 面正好避开后者。
+
+- **成熟的地方**：ACP v1 一致；capability 声明诚实；session 的 new/load/fork/resume/list 都在；
+  `load` 回放规范（先流后响应）；图片随 prompt 本地走、不上传；MIT。
+- **要盯的地方**：① v1→v2 是**故意的破坏点**，我们锁 1.18.x，升级要跟着迁移指南走；
+  ② HTTP/SSE（`/api/event`）文档自述 volatile——**我们没用它**，但 diff / revert / form / fs / pty 只在那一面；
+  ③ ACP 面缺 `thinking`（对应物是 `effort`，且只对有 variants 的模型出现）；`modes` 为 null、模式只有 `build`/`plan`；
+  `session/list` 不带消息数；`session_info_update` 未出现；
+  ④ 审批**必须配置** `permission.* = "ask"` 才会来问，默认静默放行。
+- **未验**：v2 HTTP 的断连/溢流行为、`allow_always` 的持久化语义、`usage_update` 字段是否即上下文填充率。
+
+### 还差什么
+
+| 类别 | 缺的东西 |
+| --- | --- |
+| 产品功能 | 会话列表/恢复（`load` 已实测可用，纯界面活）；审批做成一等界面（三档 `allow_once`/`allow_always`/`reject_once`）；断链/错误态；多会话 |
+| **静默判据** | 相位与节奏基线（规则 7–9 的数值）**尚未实现**——这是"看 agent 卡没卡"的核心，下一块大头 |
+| 工程 | Tauri 外壳（替换 `app/plugins/engine-bridge.ts`，`src/` 不动）；打包；Latin 展示轨仍用平台字体（可再分发字体未定） |
+| 契约 | 显式 schema 版本号与变更纪律（规则 23） |
+| 平台 | Windows ✓；NixOS = P2（WebKitGTK 的账记在 `adapters/opencode-acp.md` §六.6） |
+
+### 视觉迭代的时机（回答：**现在就迭代，别等 Tauri**）
+
+- 视觉迭代只动 `app/index.html` 的 token/CSS/布局与 `app/src/ui/console.ts` 的渲染；
+  Tauri 换掉的只是 `app/src/engine/transport.ts` 那一层**字节通道**，`src/` 不动（架构承诺）。
+- 而且**现在有真数据**：用真引擎、真流式迭代比拿静态范本准，也不用再维护两份东西。
+- 边界：**可以随便改视觉，但不要为视觉去改事件契约**（规则 25：冻结渲染层输入契约）。
+  若新视觉要求一个新事实 → 先过溯源（能不能追到事件）→ 才谈契约变更。
+- 建议顺序：**视觉 1.0（拿 `demo/ark-console.html` 当基准，把 token/几何/动效移植进 `app/`）**
+  → Tauri 外壳（只换通道）→ 功能（会话列表/审批/静默判据）→ 期间视觉继续小步迭代。
+
 ### 本轮其它决定
 
 - **工程写在本工作区**（`C:\DEV\develop\t3rra-C0d3`），产品代码的落点 `app/`。

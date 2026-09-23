@@ -1,0 +1,137 @@
+/**
+ * Events → the view the renderer reads. Pure fold; no DOM, no clock, no I/O.
+ *
+ * Inherited rules this file exists to satisfy:
+ *  - rule 1: the renderer reads *this*, never the session state or the wire
+ *  - rule 2: each block declares `from` — the kinds it consumed — and the union is checked
+ *    against the captured traces in `test/acp-coverage.test.ts`
+ *  - rule 12: a missing reading stays missing (`NOT REPORTED`), it never becomes a plausible value
+ */
+
+import type { AgentEvent, AgentEventKind, ConfigOption } from "../contract/events.ts";
+
+export type BlockName = "session" | "options" | "stream" | "tools" | "transport";
+
+export interface StreamEntry {
+  readonly key: string;
+  readonly type: "message" | "thought" | "user";
+  readonly text: string;
+}
+
+export interface ToolEntry {
+  readonly toolCallId: string;
+  readonly title: string;
+  readonly hint: string;
+  readonly status: string;
+}
+
+export interface ConsoleView {
+  readonly sessionId: string | undefined;
+  readonly options: readonly ConfigOption[];
+  readonly stream: readonly StreamEntry[];
+  readonly tools: readonly ToolEntry[];
+  readonly stopReason: string | undefined;
+  readonly permissionSummary: string | undefined;
+  readonly unmapped: number;
+  readonly exited: { readonly code: number | null; readonly signal: string | null } | undefined;
+  readonly from: Readonly<Record<BlockName, readonly AgentEventKind[]>>;
+}
+
+export const VIEW_BLOCKS: readonly BlockName[] = ["session", "options", "stream", "tools", "transport"];
+
+/**
+ * Each block declares the event kinds it consumes. This is a *static* declaration on purpose:
+ * a union computed from whatever happened to arrive proves nothing, while a written-down map
+ * can be checked against both the contract's full kind list and the captured traffic.
+ */
+export const BLOCK_PROVENANCE: Readonly<Record<BlockName, readonly AgentEventKind[]>> = {
+  session: ["session.opened", "permission.requested", "prompt.ended"],
+  options: ["options.updated"],
+  stream: ["message.appended", "thought.appended"],
+  tools: ["tool.started", "tool.updated"],
+  transport: ["engine.stderr", "engine.exited", "message.unmapped"],
+};
+
+export const emptyView = (): ConsoleView => ({
+  sessionId: undefined,
+  options: [],
+  stream: [],
+  tools: [],
+  stopReason: undefined,
+  permissionSummary: undefined,
+  unmapped: 0,
+  exited: undefined,
+  from: BLOCK_PROVENANCE,
+});
+
+/** Appends a chunk to the entry it belongs to; chunking is the engine's, not ours. */
+const appendChunk = (stream: readonly StreamEntry[], entry: StreamEntry): readonly StreamEntry[] => {
+  const index = stream.findIndex((item) => item.key === entry.key);
+  if (index < 0) return [...stream, entry];
+  const existing = stream[index];
+  if (existing === undefined) return [...stream, entry];
+  const merged: StreamEntry = { ...existing, text: existing.text + entry.text };
+  return [...stream.slice(0, index), merged, ...stream.slice(index + 1)];
+};
+
+export const reduceView = (view: ConsoleView, event: AgentEvent): ConsoleView => {
+  switch (event.kind) {
+    case "session.opened":
+      return { ...view, sessionId: event.sessionId };
+
+    case "options.updated":
+      return {
+        ...view,
+        options: event.options,
+        // A runtime that re-declares its options re-declares the whole list; an empty list
+        // means "none declared yet", which is why it is not treated as a removal.
+      };
+
+    case "message.appended":
+      return {
+        ...view,
+        stream: appendChunk(view.stream, { key: `${event.role === "user" ? "user" : "message"}:${event.messageId}`, type: event.role === "user" ? "user" : "message", text: event.text }),
+      };
+
+    case "thought.appended":
+      return {
+        ...view,
+        stream: appendChunk(view.stream, { key: `thought:${event.messageId}`, type: "thought", text: event.text }),
+      };
+
+    case "tool.started": {
+      const known = view.tools.some((tool) => tool.toolCallId === event.toolCallId);
+      return {
+        ...view,
+        tools: known
+          ? view.tools
+          : [...view.tools, { toolCallId: event.toolCallId, title: event.title, hint: event.hint, status: "running" }],
+      };
+    }
+
+    case "tool.updated":
+      return {
+        ...view,
+        tools: view.tools.some((tool) => tool.toolCallId === event.toolCallId)
+          ? view.tools.map((tool) => (tool.toolCallId === event.toolCallId ? { ...tool, status: event.status } : tool))
+          : view.tools,
+      };
+
+    case "permission.requested":
+      return { ...view, permissionSummary: event.summary };
+
+    case "prompt.ended":
+      return { ...view, stopReason: event.stopReason };
+
+    case "engine.stderr":
+    case "engine.exited":
+    case "message.unmapped":
+      return {
+        ...view,
+        unmapped: event.kind === "message.unmapped" ? view.unmapped + 1 : view.unmapped,
+        exited: event.kind === "engine.exited" ? { code: event.code, signal: event.signal } : view.exited,
+      };
+  }
+};
+
+export const reduceAll = (events: readonly AgentEvent[]): ConsoleView => events.reduce(reduceView, emptyView());

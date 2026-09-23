@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-ark-theme="ark" data-ark-depth="complex">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>T3RRA // CONSOLE</title>
+<style>
+  /* ============================================================
+     ark 族 · complex · 只有暗色（docs/design-contract.md）
+     色板/字体/几何照契约；本屏只承担第一版里程碑：
+     接上 opencode 的 ACP，发一句话，把流式回来的东西如实上屏。
+     ============================================================ */
+  :root {
+    --bg: #080a0b;                                /* ark token: ink */
+    --ink: #f4f6f6;                               /* ark token: paper */
+    --signal: #18d1ff;                            /* 唯一强调色 */
+    --state: #c8eb21;                             /* 只给完成/在线 */
+    --muted: #8d9396;
+    --on-signal: #04252c;
+    --rule: rgba(244, 246, 246, 0.14);
+    --rule-strong: rgba(244, 246, 246, 0.32);
+    --rule-control: rgba(244, 246, 246, 0.40);
+    --panel: rgba(8, 10, 11, 0.82);
+    /* 字体栈保留非 Windows 回退（仓库主人 2026-09-23 的决定） */
+    --font-display: "Bahnschrift SemiCondensed", "Bahnschrift Condensed", "Bahnschrift",
+                    "Arial Narrow", "Roboto Condensed", "DIN Condensed",
+                    "HarmonyOS Sans SC", system-ui, sans-serif;
+    --font-tech: "Space Grotesk", "IBM Plex Sans", "HarmonyOS Sans SC", system-ui, "Segoe UI", sans-serif;
+    --font-cjk: "HarmonyOS Sans SC", "Noto Sans SC", "Source Han Sans SC", "Microsoft YaHei", "PingFang SC", sans-serif;
+    --font-mono: "IBM Plex Mono", "SFMono-Regular", Consolas, "HarmonyOS Sans SC", monospace;
+    --ease: cubic-bezier(.22, .8, .2, 1);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    background: var(--bg); color: var(--ink);
+    font-family: var(--font-tech); font-size: 13px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 336px;
+    grid-template-rows: 56px minmax(0, 1fr) auto;
+    grid-template-areas: "top top" "stage dossier" "base base";
+    height: 100vh; overflow: hidden;
+  }
+  .micro { font-family: var(--font-tech); font-size: 10px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+
+  .topbar { grid-area: top; display: flex; align-items: stretch; background: #050607; border-bottom: 1px solid var(--rule); }
+  .topbar > * { display: flex; align-items: center; }
+  .brand { padding: 0 20px; border-right: 1px solid var(--rule); gap: 10px; }
+  .brand .wordmark { font-family: var(--font-display); font-weight: 700; font-size: 19px; letter-spacing: 0.22em; text-transform: uppercase; }
+  .brand .sub { color: var(--muted); }
+  .slot { padding: 0 18px; gap: 10px; border-right: 1px solid var(--rule); }
+  .slot .value { font-family: var(--font-mono); font-size: 12px; }
+  .topbar .spacer { flex: 1; }
+  .linkstat .dot { width: 7px; height: 7px; background: var(--muted); display: inline-block; }
+  html[data-link="ok"] .linkstat .dot { background: var(--state); }
+  html[data-link="ok"] .linkstat .micro { color: var(--state); }
+
+  .stage { grid-area: stage; position: relative; overflow: hidden; display: grid; grid-template-rows: auto minmax(0, 1fr); gap: 18px; padding: 30px 40px 24px; background-color: var(--bg);
+    background-image: radial-gradient(rgba(244,246,246,0.05) 1px, transparent 1px), linear-gradient(rgba(24,209,255,0.045) 1px, transparent 1px), linear-gradient(90deg, rgba(24,209,255,0.045) 1px, transparent 1px);
+    background-size: 24px 24px, 96px 96px, 96px 96px; }
+  .stage-head .phase-tag { color: var(--signal); display: flex; align-items: center; gap: 10px; }
+  .stage-head .phase-tag::before { content: ""; width: 34px; height: 2px; background: var(--signal); }
+  .stage-head h1 { font-family: var(--font-display); font-weight: 700; font-size: clamp(30px, 3.6vw, 44px); text-transform: uppercase; line-height: 0.92; letter-spacing: -0.02em; margin: 10px 0 10px; }
+  .stage-head h1 .hollow { display: block; color: transparent; -webkit-text-stroke: 1px rgba(244,246,246,0.8); }
+  @supports not (-webkit-text-stroke: 1px black) { .stage-head h1 .hollow { color: var(--ink); } }
+  .stage-head .meta { display: flex; gap: 22px; flex-wrap: wrap; }
+  .stage-head .meta .mono { font-size: 11.5px; color: var(--muted); }
+  .stage-head .meta .mono b { color: var(--ink); font-weight: 400; }
+
+  .stream { position: relative; z-index: 2; min-height: 0; overflow-y: auto; overscroll-behavior: contain; display: flex; flex-direction: column; gap: 12px; scrollbar-width: thin; scrollbar-color: var(--rule-strong) transparent; }
+  .entry { display: grid; gap: 6px; }
+  .entry .who { font-family: var(--font-tech); font-size: 10px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--muted); }
+  .entry.message .who { color: var(--ink); }
+  .entry.thought .who { color: var(--signal); }
+  .entry.user .who { color: var(--state); }
+  .entry .body { white-space: pre-wrap; font-size: 13px; line-height: 1.65; }
+  .entry.thought .body { color: var(--muted); font-family: var(--font-mono); font-size: 12px; line-height: 1.6; }
+  .entry.user .body { font-family: var(--font-cjk); }
+
+  .tools { position: relative; z-index: 2; display: grid; gap: 6px; border-top: 1px solid var(--rule); padding-top: 12px; }
+  .tool { display: grid; grid-template-columns: 1fr auto; gap: 14px; align-items: baseline; }
+  .tool .title { font-size: 11.5px; letter-spacing: 0.1em; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tool .status { font-family: var(--font-mono); font-size: 11.5px; color: var(--muted); }
+  .tool[data-status="completed"] .status { color: var(--state); }
+
+  .dossier { grid-area: dossier; border-left: 1px solid var(--rule); background: var(--panel); overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--rule-strong) transparent; }
+  .blk { padding: 18px 22px; border-bottom: 1px solid var(--rule); }
+  .blk .head { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+  .blk .head .code { color: var(--ink); }
+  .blk.strong { border-left: 2px solid var(--rule-strong); }
+  .blk .kv { display: grid; gap: 6px; }
+  .blk .kv .row { display: flex; justify-content: space-between; gap: 12px; }
+  .blk .kv .k { font-size: 10px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--muted); white-space: nowrap; }
+  .blk .kv .v { font-family: var(--font-mono); font-size: 11.5px; text-align: right; overflow-wrap: anywhere; }
+  .options { display: grid; gap: 10px; }
+  .options label { display: grid; gap: 5px; }
+  .options select { appearance: none; background: #0d1011; color: var(--ink); border: 1px solid var(--rule-control); padding: 7px 9px; font-family: var(--font-mono); font-size: 11.5px; }
+  .options .empty { color: var(--muted); font-family: var(--font-mono); font-size: 11.5px; }
+
+  .baseline { grid-area: base; border-top: 1px solid var(--rule); background: #050607; display: grid; grid-template-columns: auto minmax(160px, 1fr) auto; align-items: stretch; }
+  .actions { display: flex; align-items: stretch; }
+  .actions button { appearance: none; border: none; cursor: pointer; background: var(--signal); color: var(--on-signal); font-family: var(--font-display); font-weight: 700; font-size: 13px; letter-spacing: 0.16em; text-transform: uppercase; padding: 0 20px; min-height: 48px; transition: background-color 240ms var(--ease), color 240ms var(--ease); }
+  .actions button:hover { background: var(--ink); color: var(--bg); }
+  .actions button[disabled] { background: none; color: var(--muted); cursor: default; }
+  .cmd { display: flex; align-items: center; gap: 12px; border-left: 1px solid var(--rule); padding: 0 18px; min-width: 0; }
+  .cmd .prompt-char { color: var(--signal); font-family: var(--font-mono); font-size: 13px; }
+  .cmd input { flex: 1; min-width: 0; background: none; border: none; outline: none; color: var(--ink); font-family: var(--font-mono); font-size: 13px; caret-color: var(--signal); }
+  .cmd input::placeholder { color: var(--muted); letter-spacing: 0.12em; }
+  button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
+  .cmd input:focus-visible { outline-offset: -2px; }
+  @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+</style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand"><span class="wordmark">T3RRA</span><span class="micro sub">CONSOLE</span></div>
+    <div class="slot"><span class="micro">ENGINE</span><span class="value" id="engine">—</span></div>
+    <div class="slot"><span class="micro">SESSION</span><span class="value" id="sessionId">NOT STATED</span></div>
+    <div class="spacer"></div>
+    <div class="slot linkstat"><span class="dot" aria-hidden="true"></span><span class="micro" id="linkLabel">LINK DOWN</span></div>
+    <div class="slot"><span class="micro">UNMAPPED</span><span class="value" id="unmapped">0</span></div>
+  </header>
+
+  <main class="stage">
+    <div class="stage-head">
+      <div class="micro phase-tag" id="phase">[ IDLE ]</div>
+      <h1>Agent Stream <span class="hollow">Live</span></h1>
+      <div class="meta">
+        <span class="mono">ENGINE <b id="engineMeta">NOT STATED</b></span>
+        <span class="mono">STOP <b id="stopReason">NOT REPORTED</b></span>
+      </div>
+    </div>
+    <div>
+      <div class="stream" id="stream" aria-live="polite" aria-label="agent stream"></div>
+      <div class="tools" id="tools" aria-label="tool calls"></div>
+    </div>
+  </main>
+
+  <aside class="dossier">
+    <section class="blk strong">
+      <div class="head"><span class="micro code">[ OPTIONS ]</span><span class="micro">RUNTIME-DECLARED</span></div>
+      <div class="options" id="options"><div class="empty">NOT DECLARED YET</div></div>
+    </section>
+    <section class="blk">
+      <div class="head"><span class="micro code">[ TRANSPORT ]</span><span class="micro">BYTES ONLY</span></div>
+      <div class="kv">
+        <div class="row"><span class="k">BINARY</span><span class="v" id="binary">—</span></div>
+        <div class="row"><span class="k">CWD</span><span class="v" id="cwd">—</span></div>
+        <div class="row"><span class="k">EXIT</span><span class="v" id="exit">—</span></div>
+        <div class="row"><span class="k">LAST ERROR</span><span class="v" id="lastError">NONE</span></div>
+      </div>
+    </section>
+    <section class="blk">
+      <div class="head"><span class="micro code">[ APPROVAL ]</span><span class="micro">OPERATOR ACTION</span></div>
+      <div class="kv">
+        <div class="row"><span class="k">REQUEST</span><span class="v" id="permission">NOT REQUESTED</span></div>
+      </div>
+    </section>
+  </aside>
+
+  <footer class="baseline">
+    <div class="actions"><button type="button" id="promptSubmit">SEND ▶</button></div>
+    <label class="cmd">
+      <span class="prompt-char" aria-hidden="true">&gt;</span>
+      <input type="text" id="promptInput" placeholder="AWAITING COMMAND" aria-label="command input">
+    </label>
+    <div class="actions"><button type="button" id="restart" title="kill the engine process and spawn it again">RESTART ⟲</button></div>
+  </footer>
+
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>

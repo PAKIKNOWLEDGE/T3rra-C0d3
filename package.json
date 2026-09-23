@@ -9,9 +9,12 @@
     "test": "vitest run",
     "check:demo": "node tools/check-demo.mjs",
     "check:traces": "node tools/check-traces.mjs",
-    "check:all": "npm run check && npm run test && npm run check:demo && npm run check:traces"
+    "check:docs": "node tools/check-docs.mjs",
+    "check:all": "npm run check && npm run test && npm run check:demo && npm run check:traces && npm run check:docs",
+    "dev": "vite --config app/vite.config.ts"
   },
   "devDependencies": {
+    "@types/node": "^26.6.2",
     "typescript": "^5.9.0",
     "vitest": "^3.2.0"
   }
