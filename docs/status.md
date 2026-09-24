@@ -20,7 +20,10 @@ A 的载体 `current-state.md`、B 的载体 `recommendation.md` 已标【仅历
 | # | 问题 | 状态 | 备注 |
 | --- | --- | --- | --- |
 | 1 | 中断（HALT）没有 | 待做 | ACP 无 `session/cancel`（实测 `-32601`）；HTTP 有 `POST /session/{id}/abort` → 需 HTTP 通道。当前真中断仅 `RESTART ⟲` |
-| 2 | 会话列表 + 网页端删除 | **已修交互 · 仍待主人目视** | 整行点击=LOAD，`×`=删除；LOAD 后青条立即跟随（含 load 响应无 sessionId 时用 pendingLoadId）。首版蓝条不跟随、LOAD 按钮反直觉——主人 2026-09-23 驳回后已改 |
+| 2 | 会话列表 + 网页端删除 | **已修 · 仍待主人目视** | 整行=LOAD，`×`=删除；**打开页面不再自动 `session/new`**（曾一次打开就堆垃圾会话）。删除走引擎 HTTP；本机存储 `%USERPROFILE%\.local\share\opencode\`（主数据 `opencode.db`，另有 `storage/session_diff/ses_*.json`——**删后 diff 残留是否清掉【未验】**） |
+| 2b | 打开即建垃圾会话 | **已修** | handshake 只 `initialize` + `session/list`；首条指令才 `session/new`（queued）；删当前会话不再自动再开 |
+| 2c | BUILD/PLAN 点了像死 | **已修待目视** | 点击即乐观切换 `aria-pressed` 并本地改 `currentValue`，再发 `set_config_option`；缺会话时写 LAST ERROR |
+| 2d | 舞台标题仍可能撑爆 | **已修** | `#topic` 单行 nowrap+ellipsis + `h1 max-height`；`shortTopic` 截到 28 字 |
 | 3 | `02 EVENTS` 死按键 | **已修** | 真视图：原始事件日志 |
 | 4 | `＋ NEW` 不明/死按键 | **已修** | 真动作：`session/new`（id 变更才清空旧流） |
 | 5 | reasoning 不能收起 | **已修 · 主人已过** | thought 块可真折叠；对话区整批目视 **2026-09-23 通过** |

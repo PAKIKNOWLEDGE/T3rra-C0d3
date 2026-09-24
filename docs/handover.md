@@ -29,7 +29,9 @@ npm run check:all                            # 六道闸，提交前须全绿
 - **EVENTS 视图**（`+秒数 / kind / 事实描述`）与 **NEW**（`session/new`，id 变更才清空）。
 - **对话区（验收 #5–#9）**：回合分组、工具行按到达序内嵌、时间戳、安全 markdown、reasoning 真折叠、输入焦点左侧色条、锚点缩号。见 `derive.ts` 统一流、`ui/turns.ts`、`ui/markdown.ts`。  
   **主人目视 2026-09-23「通过」**。舞台标题只取指令首行截断（曾整段进 `h1` 撑爆，已修）。
-- **会话列表 + 删除（验收 #2，已实现待目视）**：右栏 `[ SESSIONS ]`；列表/加载走 ACP，删除走桥 `/http` → `opencode serve`。测试 `test/sessions.test.ts`。
+- **会话列表 + 删除（验收 #2，已实现待目视）**：右栏 `[ SESSIONS ]`；列表/加载走 ACP，删除走桥 `/http` → `opencode serve`。测试 `test/sessions.test.ts`。  
+  **状态机**：打开页面**不**自动 `session/new`；首条指令排队创建；删当前会话不再自动再开。BUILD/PLAN 点击乐观切换。  
+  **删除落盘**【部分实测】：引擎数据在 `%USERPROFILE%\.local\share\opencode\`（`opencode.db` + `storage/session_diff/ses_*.json`）。HTTP DELETE 后列表应消失；**session_diff 是否清掉【未验】**——本机曾堆大量空 diff（与自动建会话有关）。
 
 ### 半完成
 

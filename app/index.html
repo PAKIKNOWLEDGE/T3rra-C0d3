@@ -114,9 +114,11 @@
   .phase { display: flex; align-items: center; gap: 10px; color: var(--signal); }
   .phase::before { content: ""; width: 30px; height: 2px; background: var(--signal); }
   .phase .who { font-family: var(--f-mono); font-size: 10px; letter-spacing: .18em; }
-  h1 { font-family: var(--f-display); font-weight: 400; text-transform: uppercase; font-size: clamp(28px, 3.2vw, 44px); line-height: 1.04; letter-spacing: .01em; margin: 12px 0 10px; overflow-wrap: anywhere; max-width: 100%; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+  h1 { font-family: var(--f-display); font-weight: 400; text-transform: uppercase; font-size: clamp(28px, 3.2vw, 44px); line-height: 1.04; letter-spacing: .01em; margin: 12px 0 10px; max-width: 100%; max-height: 2.35em; overflow: hidden; }
   h1 .cjk { font-family: var(--f-cjk); font-weight: 700; letter-spacing: .06em; }
-  h1 .hollow { display: block; color: transparent; -webkit-text-stroke: 1px rgba(238,241,242,.62); font-size: .7em; letter-spacing: .12em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  /* Title line is one clipped row — never the whole instruction (owner: "标题炸了"). */
+  h1 #topic { display: block; max-height: 1.15em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  h1 .hollow { display: block; color: transparent; -webkit-text-stroke: 1px rgba(238,241,242,.62); font-size: .7em; letter-spacing: .12em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-height: 1.1em; }
   @supports not (-webkit-text-stroke: 1px black) { h1 .hollow { color: var(--muted); } }
   .meta-row { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
   .meta-row .mono { font-size: 11px; color: var(--muted); }

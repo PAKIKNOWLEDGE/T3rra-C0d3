@@ -61,6 +61,8 @@ let eventLog: EventLogEntry[] = [];
 const sessionStartedAt = { at: Date.now() };
 /** Target of an in-flight session/load — the response may omit sessionId. */
 let pendingLoadId: string | undefined;
+/** Instruction typed before a session existed; sent after session/new opens. */
+let queuedPrompt: string | undefined;
 
 /** A one-line, factual description of an event for the EVENTS view. */
 const describe = (event: AgentEvent): string => {
@@ -96,7 +98,7 @@ const silenceNow = (): SessionFacts => ({ silence: report(cadence, facts.busy ==
 /** First line of the instruction, whitespace-collapsed, capped — stage title only. */
 const shortTopic = (text: string): string => {
   const line = (text.split(/\r?\n/)[0] ?? text).replace(/\s+/g, " ").trim();
-  const limit = 36;
+  const limit = 28;
   return line.length <= limit ? line : `${line.slice(0, limit - 1)}…`;
 };
 
@@ -167,6 +169,29 @@ const handleResponse = (id: number, method: string, result: unknown): boolean =>
     refreshSessions();
   }
   if (mapping.events.length > 0) apply(mapping.events);
+  // First instruction that waited for session/new: fire after session.opened is in the view.
+  if (queuedPrompt !== undefined && view.sessionId !== undefined) {
+    const text = queuedPrompt;
+    queuedPrompt = undefined;
+    apply([
+      {
+        kind: "message.appended",
+        from: { method: "operator", variant: undefined },
+        role: "user",
+        messageId: `local-${nextId}`,
+        text,
+      },
+    ]);
+    if (facts.topic === undefined) patch({ topic: shortTopic(text) });
+    cadence = beginWaiting(cadence, Date.now());
+    patch({
+      busy: true,
+      phase: "[ RUNNING ]",
+      phaseNote: "STREAMING · INTERRUPT NOT AVAILABLE OVER ACP (session/cancel: METHOD NOT FOUND)",
+      ...silenceNow(),
+    });
+    send("session/prompt", { sessionId: view.sessionId, prompt: [{ type: "text", text }] });
+  }
   for (const event of mapping.events) {
     if (event.kind === "prompt.ended") {
       patch({ busy: false, phase: "[ READY ]", phaseNote: `TURN ENDED · ${event.stopReason.toUpperCase()}` });
@@ -208,10 +233,12 @@ const handshake = async (): Promise<void> => {
   await transport.spawn();
   send("initialize", { protocolVersion: 1, clientInfo: { name: "t3rra-console", version: "0.2.0" }, clientCapabilities: {} });
   await new Promise((done) => setTimeout(done, 600));
-  send("session/new", { cwd: probe.cwd ?? ".", mcpServers: [] });
+  // Do NOT session/new here — opening the page must not create a junk session.
   refreshSessions();
   ui.setLink("ok");
-  patch({ phase: "[ OPENING SESSION ]", phaseNote: "ENGINE UP · SESSION PENDING" });
+  ui.setCommandEnabled(true);
+  ui.setPlaceholder("PICK A SESSION · + NEW · OR TYPE TO OPEN ONE");
+  patch({ phase: "[ READY ]", phaseNote: "ENGINE UP · NO SESSION UNTIL YOU ASK" });
 };
 
 transport.onLine(handleLine);
@@ -289,11 +316,12 @@ ui.onSessionDelete((sessionId) => {
       ]);
       patch({ phase: "[ READY ]", phaseNote: `DELETED ${sessionId.slice(0, 12)}…` });
       if (view.sessionId === sessionId) {
-        // The open session is gone — open a fresh one so the dock stays honest.
-        view = emptyView();
-        patch({ sessionId: undefined, topic: undefined });
-        ui.setCommandEnabled(false);
-        send("session/new", { cwd: facts.cwd ?? ".", mcpServers: [] });
+        // Open session is gone — do not auto-create another (that was the junk-session bug).
+        const sessions = view.sessions.filter((item) => item.sessionId !== sessionId);
+        view = { ...emptyView(), sessions };
+        patch({ sessionId: undefined, topic: undefined, phase: "[ READY ]", phaseNote: "SESSION DELETED · PICK ANOTHER OR + NEW" });
+        ui.setCommandEnabled(true);
+        ui.setPlaceholder("PICK A SESSION · + NEW · OR TYPE TO OPEN ONE");
       }
       refreshSessions();
     })
@@ -304,7 +332,12 @@ ui.onSessionDelete((sessionId) => {
 
 ui.onSubmit((text) => {
   if (view.sessionId === undefined) {
-    ui.setPlaceholder("NO SESSION YET");
+    if (facts.binary === undefined) return;
+    // No session yet: create one, then send this instruction when the open lands.
+    queuedPrompt = text;
+    ui.setPlaceholder("OPENING SESSION FOR INSTRUCTION");
+    patch({ phase: "[ OPENING SESSION ]", phaseNote: "NEW SESSION FOR FIRST INSTRUCTION", busy: false });
+    send("session/new", { cwd: facts.cwd ?? ".", mcpServers: [] });
     return;
   }
   // The operator's own line is a fact of the operator, not a claim about the runtime.
@@ -330,7 +363,16 @@ ui.onRestart(() => {
 });
 
 ui.onOptionChange((optionId, value) => {
-  if (view.sessionId === undefined) return;
+  if (view.sessionId === undefined) {
+    patch({ lastError: "option change needs an open session" });
+    return;
+  }
+  // Optimistic: mode/model chips must move on click even if the response is slow or omits options.
+  view = {
+    ...view,
+    options: view.options.map((option) => (option.id === optionId ? { ...option, currentValue: value } : option)),
+  };
+  ui.render(view);
   // Rule 9: a different model has a different cadence, so its samples are not evidence.
   if (optionId === "model") cadence = discardSamples(cadence);
   send("session/set_config_option", { sessionId: view.sessionId, configId: optionId, value });
