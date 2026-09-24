@@ -88,6 +88,7 @@ export const mountConsole = (): ConsoleHandles => {
   const tools = need("tools");
   const sessionsList = need("sessionsList");
   const sessionsRefresh = need<HTMLButtonElement>("sessionsRefresh");
+  const sessionsNew = need<HTMLButtonElement>("sessionsNew");
   const pSession = need("pSession");
   const pStarted = need("pStarted");
   const pStop = need("pStop");
@@ -330,7 +331,7 @@ export const mountConsole = (): ConsoleHandles => {
       empty.textContent = "NO SESSIONS · CREATE ONE";
       const create = document.createElement("button");
       create.type = "button";
-      create.className = "micro-btn";
+      create.className = "micro-btn micro-btn--primary";
       create.id = "sessionsCreate";
       create.textContent = "＋ CREATE SESSION";
       create.addEventListener("click", () => sessionCreateHandler());
@@ -516,6 +517,7 @@ export const mountConsole = (): ConsoleHandles => {
     },
     onSessionCreate(handler): void {
       sessionCreateHandler = handler;
+      sessionsNew.addEventListener("click", handler);
     },
     onSessionsRefresh(handler): void {
       sessionsRefresh.addEventListener("click", handler);

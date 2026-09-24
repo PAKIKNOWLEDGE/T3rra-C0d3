@@ -67,7 +67,11 @@
     },
     "newSession": {
       "wired": true,
-      "role": "rail: open a fresh session"
+      "role": "rail primary: create a fresh session"
+    },
+    "sessionsNew": {
+      "wired": true,
+      "role": "dossier primary: create a fresh session"
     },
     "sessionsRefresh": {
       "wired": true,

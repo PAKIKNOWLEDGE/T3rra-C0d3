@@ -85,6 +85,20 @@
   .rail .label { writing-mode: vertical-rl; font-family: var(--f-narrow); font-size: 10px; letter-spacing: .22em; text-transform: uppercase; }
   .rail .idx { font-family: var(--f-display); font-size: 11px; }
   .rail .grow { flex: 1; }
+  /* Primary action: creating a session must be the loudest thing on the rail. */
+  .rail .item--new {
+    background: var(--signal);
+    color: #04252c;
+    border-bottom: 0;
+    border-top: 1px solid var(--signal);
+    padding: 20px 0 22px;
+    gap: 12px;
+  }
+  .rail .item--new .idx { font-size: 22px; line-height: 1; font-weight: 600; }
+  .rail .item--new .label { font-size: 11px; letter-spacing: .28em; color: #04252c; }
+  .rail .item--new:hover { background: var(--ink); color: var(--base); }
+  .rail .item--new:hover .label { color: var(--base); }
+  .rail .item--new:focus-visible { outline: 2px solid var(--ink); outline-offset: -4px; }
 
   /* ————————— 原始事件日志（EVENTS 视图；数据是真事件，不是装饰） ————————— */
   .events { position: relative; z-index: 2; min-height: 0; overflow-y: auto; font-family: var(--f-mono); font-size: 12px; display: grid; gap: 0; align-content: start; scrollbar-width: thin; scrollbar-color: var(--rule-mid) transparent; }
@@ -210,6 +224,7 @@
   .panel.alert { box-shadow: inset 2px 0 0 var(--signal); }
   .panel .head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; margin-bottom: 10px; }
   .panel .head .code { color: var(--ink); font-family: var(--f-narrow); font-size: 10px; letter-spacing: .2em; }
+  .panel .head-actions { display: flex; gap: 6px; align-items: center; }
   .row { display: flex; justify-content: space-between; gap: 12px; padding: 5px 0; }
   .row .k { font-family: var(--f-narrow); font-size: 10px; letter-spacing: .16em; text-transform: uppercase; color: var(--muted); white-space: nowrap; }
   .row .v { font-family: var(--f-mono); font-size: 11.5px; text-align: right; overflow-wrap: anywhere; }
@@ -235,8 +250,15 @@
   }
   .micro-btn:hover { color: var(--base); background: var(--ink); border-color: var(--ink); }
   .micro-btn:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
-  .sessions { display: grid; gap: 4px; }
+  /* Session create: same primary language as the rail + NEW. */
+  .micro-btn--primary {
+    background: var(--signal); border-color: var(--signal); color: #04252c;
+    letter-spacing: .14em; padding: 5px 10px; font-weight: 600;
+  }
+  .micro-btn--primary:hover { background: var(--ink); border-color: var(--ink); color: var(--base); }
+  .sessions { display: grid; gap: 6px; }
   .sessions .empty { font-family: var(--f-mono); font-size: 11.5px; color: var(--dim); }
+  .sessions .micro-btn--primary { justify-self: start; min-height: 32px; }
   .session-row {
     position: relative;
     display: grid;
@@ -340,7 +362,7 @@
     <button type="button" class="item" id="viewProcess" aria-current="true"><span class="idx">01</span><span class="label">Process</span></button>
     <button type="button" class="item" id="viewEvents"><span class="idx">02</span><span class="label">Events</span></button>
     <div class="grow"></div>
-    <button type="button" class="item" id="newSession" title="open a fresh session in the same engine"><span class="idx">＋</span><span class="label">New</span></button>
+    <button type="button" class="item item--new" id="newSession" aria-label="Create a new session" title="Create a new session"><span class="idx" aria-hidden="true">＋</span><span class="label">New</span></button>
   </nav>
 
   <main class="stage">
@@ -389,7 +411,10 @@
     <section class="panel">
       <div class="head">
         <span class="code">[ SESSIONS ]</span>
-        <button type="button" id="sessionsRefresh" class="micro-btn" aria-label="reload session list">↻ LIST</button>
+        <span class="head-actions">
+          <button type="button" id="sessionsNew" class="micro-btn micro-btn--primary" aria-label="Create a new session">＋ NEW</button>
+          <button type="button" id="sessionsRefresh" class="micro-btn" aria-label="reload session list">↻ LIST</button>
+        </span>
       </div>
       <div id="sessionsList" class="sessions"><div class="empty">NOT LOADED YET</div></div>
     </section>
