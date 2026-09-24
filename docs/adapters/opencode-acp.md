@@ -54,7 +54,9 @@
   证据：`traces/opencode/opencode-acp-2026-09-23T06-46-05-107Z-sequencing-redacted.jsonl` 的 `load_timing`。  
   符合 ACP「MUST replay… respond only after all entries streamed」→ 适配器可把「load 已返回」当「历史完整」。  
   （首测曾挑到空会话、结论相反；换有历史会话才定——挑会话是此类实验的必要条件。）
-- **`session/list` 仅四字段**：`{sessionId, cwd, title, updatedAt}`，**无消息数/轮数**。要显示轮数须走 HTTP 或不显示。
+- **`session/list` 仅四字段**：`{sessionId, cwd, title, updatedAt}`，**无消息数/轮数**。  
+  **已接入产品**：`responses.ts` → `sessions.updated`；右栏 `[ SESSIONS ]`。删除走 HTTP **`DELETE /session/{sessionID}`**（OpenAPI）经桥 `/http` + 本地 `opencode serve`。  
+  LOAD 走 ACP `session/load { sessionId, cwd, mcpServers }`（与 spike 同形）。
 - **`session/cancel` 不存在（本机 1.18.32）**：请求得 **`-32601 Method not found`**，stderr 同步出现。  
   → ACP 面无中断。替代：HTTP `POST /session/{sessionID}/abort`、`POST /api/session/{sessionID}/interrupt`（本地 OpenAPI）→ 中断走 HTTP 通道或杀进程（现 `RESTART ⟲`）。  
   trace：`traces/opencode/*-cancel-probe.jsonl`，探针 `spike/probe-session-cancel.mjs`。

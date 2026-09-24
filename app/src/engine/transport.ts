@@ -2,11 +2,12 @@
  * The byte channel to the engine, browser side.
  *
  * The dev implementation talks HTTP + SSE to `app/plugins/engine-bridge.ts`; the Tauri shell
- * will replace it with an ipc channel. Either way this module only moves lines: it never
+ * will replace it with an ipc channel. Either way this module only moves lines/bytes: it never
  * parses ACP, never learns what a `sessionUpdate` is, and never decides anything.
  *
  * That separation is rule 4 (rules-inherited §一): the shell moves bytes, the TS contract
- * decides what they mean.
+ * decides what they mean. `http()` is a generic request tunnel — path construction lives in
+ * `engine-http.ts`.
  */
 
 export interface TransportProbe {
@@ -14,11 +15,18 @@ export interface TransportProbe {
   readonly cwd: string | null;
 }
 
+export interface TransportHttpResult {
+  readonly status: number;
+  readonly text: string;
+}
+
 export interface Transport {
   probe(): Promise<TransportProbe>;
   spawn(): Promise<void>;
   write(line: string): Promise<void>;
   kill(): Promise<void>;
+  /** Generic HTTP tunnel to the engine REST face (via the bridge's `opencode serve`). */
+  http(method: string, path: string, body?: unknown): Promise<TransportHttpResult>;
   /** Called for every complete line the engine writes. */
   onLine(handler: (line: string) => void): void;
   onExit(handler: (info: { code: number | null; signal: string | null }) => void): void;
@@ -79,6 +87,15 @@ export const createBridgeTransport = (clientId: string): Transport => {
     },
     async kill(): Promise<void> {
       await post("/kill", {});
+    },
+    async http(method: string, path: string, body?: unknown): Promise<TransportHttpResult> {
+      const response = await fetch(`${PREFIX}/http?${query}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ method, path, body: body ?? null }),
+      });
+      const text = await response.text().catch(() => "");
+      return { status: response.status, text };
     },
     onLine(handler): void {
       lineHandlers.push(handler);

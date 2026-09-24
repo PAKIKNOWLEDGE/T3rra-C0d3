@@ -1,7 +1,8 @@
 /**
  * Dev-only byte pipe to the engine. This is the rehearsal for the Tauri shell, not the shell:
- * it exposes /probe, /spawn, /write, /kill and an SSE line stream, and it understands nothing
- * about ACP. Its whole vocabulary is "spawn a process, forward bytes" (rule 4).
+ * it exposes /probe, /spawn, /write, /kill, /http (generic tunnel) and an SSE line stream.
+ * It understands nothing about ACP event vocabulary (rule 4): /http only forwards method+path+body
+ * to a local `opencode serve`.
  *
  * Why it exists at all: a browser cannot spawn a subprocess, and the first milestone is a
  * window that shows a real stream. When the Tauri shell lands, this file is deleted and the
@@ -11,10 +12,12 @@
  * the future shell cannot drift apart on ordering.
  */
 
-import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { spawn, type ChildProcess, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { homedir } from "node:os";
 import { mkdirSync } from "node:fs";
+import { createServer } from "node:net";
 import { join, resolve } from "node:path";
+import type { AddressInfo } from "node:net";
 import type { Plugin, ViteDevServer } from "vite";
 import type { ServerResponse } from "node:http";
 import type { IncomingMessage } from "node:http";
@@ -23,9 +26,13 @@ import { resolveEngineCandidates } from "../src/engine/resolve.ts";
 const PREFIX = "/__t3";
 const REAP_DELAY_MS = 60_000;
 const KEEPALIVE_MS = 15_000;
+const SERVE_READY_TIMEOUT_MS = 20_000;
 
 interface Client {
   child: ChildProcessWithoutNullStreams | undefined;
+  serve: ChildProcess | undefined;
+  servePort: number | undefined;
+  serveReady: Promise<number> | undefined;
   streams: Set<ServerResponse>;
   reap: ReturnType<typeof setTimeout> | undefined;
 }
@@ -61,6 +68,16 @@ const sandboxDir = (): string => {
   return dir;
 };
 
+const freePort = (): Promise<number> =>
+  new Promise((done, fail) => {
+    const server = createServer();
+    server.once("error", fail);
+    server.listen(0, "127.0.0.1", () => {
+      const port = (server.address() as AddressInfo).port;
+      server.close(() => done(port));
+    });
+  });
+
 const probeVersion = (binary: string): Promise<boolean> =>
   new Promise((done) => {
     const child = spawn(binary, ["--version"], { stdio: "ignore", windowsHide: true });
@@ -86,7 +103,7 @@ export const engineBridge = (): Plugin => {
   const clientFor = (id: string): Client => {
     const existing = clients.get(id);
     if (existing !== undefined) return existing;
-    const created: Client = { child: undefined, streams: new Set(), reap: undefined };
+    const created: Client = { child: undefined, serve: undefined, servePort: undefined, serveReady: undefined, streams: new Set(), reap: undefined };
     clients.set(id, created);
     return created;
   };
@@ -105,6 +122,7 @@ export const engineBridge = (): Plugin => {
     client.reap = setTimeout(() => {
       if (client.streams.size === 0) {
         client.child?.kill();
+        client.serve?.kill();
         clients.delete(id);
       }
     }, REAP_DELAY_MS);
@@ -113,6 +131,70 @@ export const engineBridge = (): Plugin => {
   const clientIdOf = (req: IncomingMessage): string | null => {
     const url = new URL(req.url ?? "", "http://localhost");
     return url.searchParams.get("client");
+  };
+
+  const ensureServe = (client: Client): Promise<number> => {
+    if (client.servePort !== undefined && client.serve !== undefined && client.serve.exitCode === null) return Promise.resolve(client.servePort);
+    if (client.serveReady !== undefined) return client.serveReady;
+
+    client.serveReady = (async () => {
+      const binary = await resolveBinary();
+      if (binary === null) throw new Error("engine not found: set T3RRA_ENGINE_BIN, or put opencode on PATH");
+      const port = await freePort();
+      const child = spawn(binary, ["serve", "--port", String(port)], {
+        cwd: sandboxDir(),
+        stdio: ["ignore", "pipe", "pipe"],
+        windowsHide: true,
+      });
+      client.serve = child;
+      debug(`serve spawn port=${port}`);
+
+      const stdout = child.stdout;
+      const stderr = child.stderr;
+      if (stdout === null || stderr === null) throw new Error("opencode serve stdio not available");
+
+      await new Promise<void>((done, fail) => {
+        const timer = setTimeout(() => fail(new Error(`opencode serve not ready in ${SERVE_READY_TIMEOUT_MS}ms`)), SERVE_READY_TIMEOUT_MS);
+        let buf = "";
+        const onData = (chunk: Buffer | string): void => {
+          buf += String(chunk);
+          if (/listening|http:\/\/|127\.0\.0\.1|localhost/i.test(buf)) {
+            clearTimeout(timer);
+            stdout.off("data", onData);
+            done();
+          }
+        };
+        stdout.on("data", onData);
+        stderr.on("data", (chunk: Buffer | string) => debug(`serve stderr ${String(chunk).trim().slice(0, 200)}`));
+        child.once("error", (error) => {
+          clearTimeout(timer);
+          fail(error);
+        });
+        child.once("exit", (code) => {
+          clearTimeout(timer);
+          fail(new Error(`opencode serve exited early (code ${code})`));
+        });
+      });
+
+      client.servePort = port;
+      return port;
+    })().catch((error: unknown) => {
+      client.serveReady = undefined;
+      client.serve = undefined;
+      client.servePort = undefined;
+      throw error;
+    });
+
+    return client.serveReady;
+  };
+
+  const killClient = (client: Client): void => {
+    client.child?.kill();
+    client.child = undefined;
+    client.serve?.kill();
+    client.serve = undefined;
+    client.servePort = undefined;
+    client.serveReady = undefined;
   };
 
   return {
@@ -220,20 +302,55 @@ export const engineBridge = (): Plugin => {
         })().catch((error: unknown) => json(res, 500, { ok: false, error: String(error) }));
       });
 
+      // Generic HTTP tunnel: path/body come from the app; this process only forwards bytes
+      // to a local `opencode serve` (rule 4 — no ACP/event vocabulary here).
+      server.middlewares.use(`${PREFIX}/http`, (req, res) => {
+        void (async () => {
+          if (req.method !== "POST") {
+            json(res, 405, { ok: false, error: "use POST" });
+            return;
+          }
+          const id = clientIdOf(req);
+          if (id === null) {
+            json(res, 400, { ok: false, error: "client query parameter required" });
+            return;
+          }
+          const body = await readBody(req);
+          const method = typeof body["method"] === "string" ? body["method"].toUpperCase() : "";
+          const path = typeof body["path"] === "string" ? body["path"] : "";
+          if (method === "" || !path.startsWith("/")) {
+            json(res, 400, { ok: false, error: "method and path required (path must start with /)" });
+            return;
+          }
+          const client = clientFor(id);
+          const port = await ensureServe(client);
+          const payload = body["body"] === undefined || body["body"] === null ? undefined : body["body"];
+          const init: RequestInit = { method };
+          if (payload !== undefined) {
+            init.headers = { "Content-Type": "application/json" };
+            init.body = JSON.stringify(payload);
+          }
+          const upstream = await fetch(`http://127.0.0.1:${port}${path}`, init);
+          const text = await upstream.text();
+          res.writeHead(upstream.status, { "Content-Type": upstream.headers.get("content-type") ?? "application/json", "Content-Length": Buffer.byteLength(text) });
+          res.end(text);
+        })().catch((error: unknown) => {
+          debug(`http tunnel error ${String(error)}`);
+          json(res, 502, { ok: false, error: String(error) });
+        });
+      });
+
       server.middlewares.use(`${PREFIX}/kill`, (req, res) => {
         const id = clientIdOf(req);
         const client = id === null ? undefined : clients.get(id);
-        if (client !== undefined) {
-          client.child?.kill();
-          client.child = undefined;
-        }
+        if (client !== undefined) killClient(client);
         json(res, 200, { ok: true });
       });
 
       server.httpServer?.once("close", () => {
         for (const client of clients.values()) {
           if (client.reap !== undefined) clearTimeout(client.reap);
-          client.child?.kill();
+          killClient(client);
         }
         clients.clear();
       });

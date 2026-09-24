@@ -14,6 +14,7 @@
 
 import { translateLine } from "./engine/acp.ts";
 import { mapResponse } from "./engine/responses.ts";
+import { deleteSession } from "./engine/engine-http.ts";
 import type { AgentEvent } from "./contract/events.ts";
 import { createBridgeTransport, type Transport } from "./engine/transport.ts";
 import { emptyView, reduceView, type ConsoleView } from "./view/derive.ts";
@@ -64,6 +65,8 @@ const describe = (event: AgentEvent): string => {
   const src = `${event.from.method}${event.from.variant === undefined ? "" : `/${event.from.variant}`}`;
   switch (event.kind) {
     case "session.opened": return `session ${event.sessionId}`;
+    case "sessions.updated": return `${event.sessions.length} session(s) from list`;
+    case "sessions.removed": return `deleted ${event.sessionId}`;
     case "options.updated":
       return `${event.options.length} option(s): ${event.options.map((option) => `${option.id}=${option.currentValue}`).join(", ")}`;
     case "message.appended": return `${event.role} · ${event.text.length} chars · ${src}`;
@@ -118,6 +121,10 @@ const send = (method: string, params: unknown): number => {
   return id;
 };
 
+const refreshSessions = (): void => {
+  send("session/list", {});
+};
+
 /** Responses carry facts the notifications do not: the session id and the option menu. */
 const handleResponse = (id: number, method: string, result: unknown): boolean => {
   const mapping = mapResponse(method, result);
@@ -138,6 +145,7 @@ const handleResponse = (id: number, method: string, result: unknown): boolean =>
     });
     ui.setCommandEnabled(true);
     ui.setPlaceholder("AWAITING COMMAND");
+    refreshSessions();
   }
   if (mapping.events.length > 0) apply(mapping.events);
   for (const event of mapping.events) {
@@ -182,6 +190,7 @@ const handshake = async (): Promise<void> => {
   send("initialize", { protocolVersion: 1, clientInfo: { name: "t3rra-console", version: "0.2.0" }, clientCapabilities: {} });
   await new Promise((done) => setTimeout(done, 600));
   send("session/new", { cwd: probe.cwd ?? ".", mcpServers: [] });
+  refreshSessions();
   ui.setLink("ok");
   patch({ phase: "[ OPENING SESSION ]", phaseNote: "ENGINE UP · SESSION PENDING" });
 };
@@ -211,6 +220,55 @@ ui.onNewSession(() => {
   patch({ phase: "[ OPENING SESSION ]", phaseNote: "NEW SESSION REQUESTED", busy: false });
   ui.setView("process");
   send("session/new", { cwd: facts.cwd ?? ".", mcpServers: [] });
+});
+
+ui.onSessionsRefresh(() => {
+  refreshSessions();
+});
+
+ui.onSessionLoad((sessionId, cwd) => {
+  if (facts.binary === undefined) return;
+  patch({ phase: "[ LOADING ]", phaseNote: `session/load ${sessionId.slice(0, 12)}…`, busy: false, topic: undefined });
+  ui.setView("process");
+  ui.setCommandEnabled(false);
+  ui.setPlaceholder("REPLAYING HISTORY");
+  send("session/load", {
+    sessionId,
+    cwd: cwd === "" ? facts.cwd ?? "." : cwd,
+    mcpServers: [],
+  });
+  refreshSessions();
+});
+
+ui.onSessionDelete((sessionId) => {
+  if (facts.binary === undefined) return;
+  patch({ phase: "[ DELETING ]", phaseNote: `DELETE session ${sessionId.slice(0, 12)}…` });
+  void deleteSession((method, path, body) => transport.http(method, path, body), sessionId)
+    .then((result) => {
+      if (result.status >= 400) {
+        patch({ lastError: `delete failed: HTTP ${result.status}`.slice(0, 160), phase: "[ READY ]", phaseNote: "DELETE FAILED" });
+        return;
+      }
+      apply([
+        {
+          kind: "sessions.removed",
+          from: { method: "http.delete.response", variant: undefined },
+          sessionId,
+        },
+      ]);
+      patch({ phase: "[ READY ]", phaseNote: `DELETED ${sessionId.slice(0, 12)}…` });
+      if (view.sessionId === sessionId) {
+        // The open session is gone — open a fresh one so the dock stays honest.
+        view = emptyView();
+        patch({ sessionId: undefined, topic: undefined });
+        ui.setCommandEnabled(false);
+        send("session/new", { cwd: facts.cwd ?? ".", mcpServers: [] });
+      }
+      refreshSessions();
+    })
+    .catch((error: unknown) => {
+      patch({ lastError: String(error).slice(0, 160), phase: "[ READY ]", phaseNote: "DELETE FAILED" });
+    });
 });
 
 ui.onSubmit((text) => {

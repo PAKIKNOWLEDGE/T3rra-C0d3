@@ -29,31 +29,30 @@ npm run check:all                            # 六道闸，提交前须全绿
 - **EVENTS 视图**（`+秒数 / kind / 事实描述`）与 **NEW**（`session/new`，id 变更才清空）。
 - **对话区（验收 #5–#9）**：回合分组、工具行按到达序内嵌、时间戳、安全 markdown、reasoning 真折叠、输入焦点左侧色条、锚点缩号。见 `derive.ts` 统一流、`ui/turns.ts`、`ui/markdown.ts`。  
   **主人目视 2026-09-23「通过」**。舞台标题只取指令首行截断（曾整段进 `h1` 撑爆，已修）。
+- **会话列表 + 删除（验收 #2，已实现待目视）**：右栏 `[ SESSIONS ]`；列表/加载走 ACP，删除走桥 `/http` → `opencode serve`。测试 `test/sessions.test.ts`。
 
 ### 半完成
 
-- **视觉第 2 代已接入 `app/`**；对话区这一批已过，其余观感仍归主人目视。
-- **`RESTART ⟲`**：真动作（杀进程重开），但是**粗中断**。重开后需 `session/load` 才回放——引擎侧已实测可用，**界面未接**。
+- **视觉第 2 代已接入 `app/`**；对话区已过，#2 面板待主人目视。
+- **`RESTART ⟲`**：真动作（杀进程重开），但是**粗中断**。重开后可用会话列表 LOAD 回放。
 
-### 未完成（验收清单 11 条中的 3 条）
+### 未完成（验收清单 11 条中的 2 条）
 
-完整表见 [`status.md`](./status.md)「仓库主人验收清单」。摘要（**#2 为最高优先**，废弃会话积压）：
+完整表见 [`status.md`](./status.md)「仓库主人验收清单」。摘要：
 
 | # | 事项 | 卡点 / 做法 |
 | --- | --- | --- |
-| **2** | **会话列表 + 删除（P0）** | 列表：ACP `session/list`（仅四字段）；删除：HTTP `DELETE /session/{sessionID}`。主人 2026-09-23 点名最高优先 |
-| 1 | **中断 HALT** | ACP `session/cancel` 不存在（实测 `-32601`）。HTTP `POST /session/{sessionID}/abort` → 需 HTTP 通道（可与 #2 共用透传） |
+| 1 | **中断 HALT** | ACP `session/cancel` 不存在（实测 `-32601`）。HTTP `POST /session/{sessionID}/abort` → 桥 `/http` 已具备 |
 | 10 | 审批界面 | 事件可收；选项渲成按钮并回包（形状已实测）。默认配置下引擎不问（须 `permission.*="ask"`） |
 
 ### 开放项（未排期）
 
 - **网页粘贴图片**：opencode CLI 支持；本网页 UI 未做。ACP `promptCapabilities.image: true` 已实测有。**是否必须 Tauri 未验**——浏览器 paste/File 或许够用，先记开放，不进 P0。
 
-### #1 与 #2 的推荐做法（已探明，未实施）
+### #1 推荐做法（通道已就绪）
 
-桥（`app/plugins/engine-bridge.ts`）再起一个 `opencode serve`，加一个**通用 HTTP 透传端点**（壳仍只搬字节；端点知识写在 `app/`，例如 `app/src/engine/engine-http.ts`）。  
-然后：列表 ACP `session/list`；删除 `DELETE /session/{sessionID}`；HALT → `POST /session/{id}/abort`。  
-**注意**：`abort` 只能中断**同一 serve 进程**内的会话；若 ACP 与 serve 是两个进程，中断可能需要「kill + `session/load`」退路（该退路引擎侧已实测可用）。
+桥已有通用 HTTP 透传（`POST /__t3/http` + 懒起 `opencode serve`）。HALT → 在 `app/src/engine/engine-http.ts` 加 `POST /session/{id}/abort` 即可。  
+**注意**：`abort` 只能中断**同一 serve 进程**内的会话；若与 ACP 分进程，可能需要「kill + `session/load`」退路（已实测可用）。
 
 ## 三、规矩
 

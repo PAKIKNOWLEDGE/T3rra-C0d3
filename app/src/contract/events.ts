@@ -33,8 +33,21 @@ export interface ConfigOption {
   readonly choices: readonly ConfigOptionChoice[];
 }
 
+/**
+ * One row from `session/list`. Only the four fields the engine actually reports —
+ * no message count (rule 12 / adapters: list has no round-trip total).
+ */
+export interface SessionSummary {
+  readonly sessionId: string;
+  readonly title: string;
+  readonly updatedAt: string;
+  readonly cwd: string;
+}
+
 export type AgentEvent =
   | { readonly kind: "session.opened"; readonly from: EventSource; readonly sessionId: string }
+  | { readonly kind: "sessions.updated"; readonly from: EventSource; readonly sessions: readonly SessionSummary[] }
+  | { readonly kind: "sessions.removed"; readonly from: EventSource; readonly sessionId: string }
   | { readonly kind: "options.updated"; readonly from: EventSource; readonly options: readonly ConfigOption[] }
   | { readonly kind: "message.appended"; readonly from: EventSource; readonly role: "agent" | "user"; readonly messageId: string; readonly text: string }
   | { readonly kind: "thought.appended"; readonly from: EventSource; readonly messageId: string; readonly text: string }
@@ -53,6 +66,8 @@ export const isEventOf = <K extends AgentEventKind>(event: AgentEvent, kind: K):
 /** Every kind this contract knows; the coverage test walks it against the captured traces. */
 export const EVENT_KINDS: readonly AgentEventKind[] = [
   "session.opened",
+  "sessions.updated",
+  "sessions.removed",
   "options.updated",
   "message.appended",
   "thought.appended",

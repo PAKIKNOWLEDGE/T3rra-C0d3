@@ -64,6 +64,13 @@
     "newSession": {
       "wired": true,
       "role": "rail: open a fresh session"
+    },
+    "sessionsRefresh": {
+      "wired": true,
+      "role": "dossier: reload the engine's session list"
+    },
+    "sessionsList": {
+      "static": "container only; rows (LOAD / DEL) are created by the renderer from session/list"
     }
   }
 }

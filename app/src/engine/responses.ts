@@ -3,8 +3,8 @@
  * the answers to what we sent.
  *
  * It exists as a separate, pure module because of a bug the owner caught: the session's mode
- * chip looked dead after clicking it. The engine had accepted the change and answered with the
- * full, updated option list — and the renderer dropped that answer on the floor because only
+ * chip looked dead after clicking it. The engine had accepted the change and answered with
+ * the full, updated option list — and the renderer dropped that answer on the floor because only
  * `initialize` and `session/new` were being read. A mapping table that only lives inside the
  * DOM boot code cannot be tested; this one can, and `test/responses.test.ts` pins that exact case.
  *
@@ -13,7 +13,7 @@
  */
 
 import { translateLine } from "./acp.ts";
-import type { AgentEvent } from "../contract/events.ts";
+import type { AgentEvent, SessionSummary } from "../contract/events.ts";
 
 export interface ResponseMapping {
   readonly events: readonly AgentEvent[];
@@ -35,6 +35,27 @@ export const optionsEventOf = (configOptions: readonly unknown[]): AgentEvent =>
   return event ?? { kind: "message.unmapped", from: OPTION_SOURCE };
 };
 
+/** session/list entries — only the four fields the engine reports (adapters §三). */
+export const mapSessionList = (result: unknown): readonly SessionSummary[] => {
+  const payload = result as { sessions?: unknown } | unknown[] | null;
+  const raw = Array.isArray(payload) ? payload : ((payload as { sessions?: unknown } | null)?.sessions ?? []);
+  if (!Array.isArray(raw)) return [];
+  const out: SessionSummary[] = [];
+  for (const item of raw) {
+    if (item === null || typeof item !== "object") continue;
+    const row = item as { sessionId?: unknown; id?: unknown; title?: unknown; updatedAt?: unknown; cwd?: unknown };
+    const sessionId = typeof row.sessionId === "string" ? row.sessionId : typeof row.id === "string" ? row.id : "";
+    if (sessionId === "") continue;
+    out.push({
+      sessionId,
+      title: typeof row.title === "string" ? row.title : "",
+      updatedAt: row.updatedAt === undefined || row.updatedAt === null ? "" : String(row.updatedAt),
+      cwd: typeof row.cwd === "string" ? row.cwd : "",
+    });
+  }
+  return out;
+};
+
 export const mapResponse = (method: string, result: unknown): ResponseMapping => {
   const events: AgentEvent[] = [];
   let sessionId: string | undefined;
@@ -54,6 +75,15 @@ export const mapResponse = (method: string, result: unknown): ResponseMapping =>
       events.push({ kind: "session.opened", from: { method: `${method}.response`, variant: undefined }, sessionId: payload.sessionId });
     }
     if (payload?.configOptions !== undefined) events.push(optionsEventOf(payload.configOptions));
+    return { events, sessionId, agentName, recognised: true };
+  }
+
+  if (method === "session/list") {
+    events.push({
+      kind: "sessions.updated",
+      from: { method: "session/list.response", variant: undefined },
+      sessions: mapSessionList(result),
+    });
     return { events, sessionId, agentName, recognised: true };
   }
 

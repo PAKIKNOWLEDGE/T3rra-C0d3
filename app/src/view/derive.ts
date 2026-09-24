@@ -11,7 +11,7 @@
  * so the conversation view can interleave tool rows without inventing sequence.
  */
 
-import type { AgentEvent, AgentEventKind, ConfigOption } from "../contract/events.ts";
+import type { AgentEvent, AgentEventKind, ConfigOption, SessionSummary } from "../contract/events.ts";
 
 export type BlockName = "session" | "options" | "stream" | "tools" | "transport";
 
@@ -44,6 +44,7 @@ export interface ConsoleView {
   readonly options: readonly ConfigOption[];
   readonly stream: readonly StreamEntry[];
   readonly tools: readonly ToolEntry[];
+  readonly sessions: readonly SessionSummary[];
   readonly stopReason: string | undefined;
   readonly permissionSummary: string | undefined;
   readonly unmapped: number;
@@ -59,7 +60,7 @@ export const VIEW_BLOCKS: readonly BlockName[] = ["session", "options", "stream"
  * can be checked against both the contract's full kind list and the captured traffic.
  */
 export const BLOCK_PROVENANCE: Readonly<Record<BlockName, readonly AgentEventKind[]>> = {
-  session: ["session.opened", "permission.requested", "prompt.ended"],
+  session: ["session.opened", "sessions.updated", "sessions.removed", "permission.requested", "prompt.ended"],
   options: ["options.updated"],
   stream: ["message.appended", "thought.appended", "tool.started", "tool.updated"],
   tools: ["tool.started", "tool.updated"],
@@ -71,6 +72,7 @@ export const emptyView = (): ConsoleView => ({
   options: [],
   stream: [],
   tools: [],
+  sessions: [],
   stopReason: undefined,
   permissionSummary: undefined,
   unmapped: 0,
@@ -112,6 +114,12 @@ export const reduceView = (view: ConsoleView, event: AgentEvent, nowMs?: number)
   switch (event.kind) {
     case "session.opened":
       return { ...view, sessionId: event.sessionId };
+
+    case "sessions.updated":
+      return { ...view, sessions: event.sessions };
+
+    case "sessions.removed":
+      return { ...view, sessions: view.sessions.filter((item) => item.sessionId !== event.sessionId) };
 
     case "options.updated":
       return {

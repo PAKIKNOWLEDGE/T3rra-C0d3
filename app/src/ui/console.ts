@@ -51,6 +51,9 @@ export interface ConsoleHandles {
   onOptionChange(handler: (optionId: string, value: string) => void): void;
   onViewChange(handler: (view: "process" | "events") => void): void;
   onNewSession(handler: () => void): void;
+  onSessionsRefresh(handler: () => void): void;
+  onSessionLoad(handler: (sessionId: string, cwd: string) => void): void;
+  onSessionDelete(handler: (sessionId: string) => void): void;
   setView(view: "process" | "events"): void;
   renderEvents(entries: readonly EventLogEntry[]): void;
   setLink(state: "ok" | "down"): void;
@@ -82,6 +85,8 @@ export const mountConsole = (): ConsoleHandles => {
   const options = need("options");
   const modes = need("modes");
   const tools = need("tools");
+  const sessionsList = need("sessionsList");
+  const sessionsRefresh = need<HTMLButtonElement>("sessionsRefresh");
   const pSession = need("pSession");
   const pStarted = need("pStarted");
   const pStop = need("pStop");
@@ -112,7 +117,10 @@ export const mountConsole = (): ConsoleHandles => {
   const restart = need<HTMLButtonElement>("restart");
 
   let optionHandler: (optionId: string, value: string) => void = () => {};
+  let sessionLoadHandler: (sessionId: string, cwd: string) => void = () => {};
+  let sessionDeleteHandler: (sessionId: string) => void = () => {};
   let optionSignature = "";
+  let sessionSignature = "";
   let facts: SessionFacts = {};
   /** Thought blocks the operator collapsed — keyed by stream key, survives re-render. */
   const collapsedThoughts = new Set<string>();
@@ -304,6 +312,65 @@ export const mountConsole = (): ConsoleHandles => {
    *  - not busy: the anchor falls back to the session clock, and the comparison line says the
    *    silence is not measured at all, rather than pretending the session is stalling.
    */
+  const renderSessions = (view: ConsoleView): void => {
+    const signature = view.sessions.map((item) => item.sessionId).join("|");
+    // Always re-render when the open session changes so the "current" marker tracks it.
+    const current = view.sessionId ?? "";
+    const full = `${signature}#${current}`;
+    if (full === sessionSignature) return;
+    sessionSignature = full;
+
+    sessionsList.replaceChildren();
+    if (view.sessions.length === 0) {
+      const empty = document.createElement("div");
+      empty.className = "empty";
+      empty.textContent = "NO SESSIONS REPORTED";
+      sessionsList.append(empty);
+      return;
+    }
+    for (const item of view.sessions) {
+      const row = document.createElement("div");
+      row.className = item.sessionId === view.sessionId ? "session-row current" : "session-row";
+      row.dataset["sessionId"] = item.sessionId;
+
+      const title = document.createElement("div");
+      title.className = "session-title";
+      title.textContent =
+        item.title !== ""
+          ? item.title
+          : item.sessionId.length > 18
+            ? `${item.sessionId.slice(0, 12)}…${item.sessionId.slice(-4)}`
+            : item.sessionId;
+
+      const when = document.createElement("div");
+      when.className = "session-when";
+      when.textContent = item.updatedAt === "" ? "NOT STATED" : item.updatedAt;
+
+      const actions = document.createElement("div");
+      actions.className = "session-actions";
+
+      const load = document.createElement("button");
+      load.type = "button";
+      load.textContent = "LOAD";
+      load.addEventListener("click", () => sessionLoadHandler(item.sessionId, item.cwd));
+
+      const del = document.createElement("button");
+      del.type = "button";
+      del.className = "danger";
+      del.textContent = "DEL";
+      del.addEventListener("click", () => {
+        const label = item.title !== "" ? item.title : item.sessionId;
+        if (window.confirm(`Delete session?\n${label}\n\nThis cannot be undone from this UI.`)) {
+          sessionDeleteHandler(item.sessionId);
+        }
+      });
+
+      actions.append(load, del);
+      row.append(title, when, actions);
+      sessionsList.append(row);
+    }
+  };
+
   const renderStage = (): void => {
     const busy = facts.busy === true;
     const silence = facts.silence;
@@ -415,6 +482,15 @@ export const mountConsole = (): ConsoleHandles => {
     onNewSession(handler): void {
       newSessionButton.addEventListener("click", handler);
     },
+    onSessionsRefresh(handler): void {
+      sessionsRefresh.addEventListener("click", handler);
+    },
+    onSessionLoad(handler): void {
+      sessionLoadHandler = handler;
+    },
+    onSessionDelete(handler): void {
+      sessionDeleteHandler = handler;
+    },
     setView(view): void {
       applyView(view);
     },
@@ -515,6 +591,7 @@ export const mountConsole = (): ConsoleHandles => {
 
       renderTools(view);
       renderOptions(view);
+      renderSessions(view);
     },
   };
 };
