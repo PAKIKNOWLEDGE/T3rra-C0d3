@@ -20,8 +20,8 @@ A 的载体 `current-state.md`、B 的载体 `recommendation.md` 已标【仅历
 
 | # | 问题 | 状态 | 备注 |
 | --- | --- | --- | --- |
-| 1 | 中断（HALT）没有 | **代码接入 · 待目视 · 架构待重验** | 2026-09-24 契约审计**推翻了本条立论**：旧结论「ACP `session/cancel` 不存在」是**实验方法错误**——它是 notification，旧探针以 request 发出才得 `-32601`（[`engine-contract-audit.md`](./engine-contract-audit.md) F1）。当前走 HTTP `POST /session/{id}/abort` + 桥按路径分流，但 **abort 恒返回 `true`**（假成功无信号，F2），notification cancel 端到端**未验证**。故本条既待目视，也待「直接用 notification cancel vs 保留 HTTP 分流」的架构裁决 |
-| 2 | 会话列表 + 网页端删除 | **已修 · 主人已过** | 整行=LOAD、`×`=删除；不自动建会话；左轨/右栏/空态三处青色主操作新建；删除走引擎 HTTP；存储 `%USERPROFILE%\.local\share\opencode\`（`opencode.db` + `storage/session_diff/`——**diff 是否清掉【未验】**）。**2026-09-23 目视通过**（含 NEW 显眼化） |
+| 1 | 中断（HALT）没有 | **已按实测重写 · 待目视** | 旧结论「ACP `session/cancel` 不存在」是**实验方法错误**（带 id 当 request 发才得 `-32601`，F1）。2026-09-24 盲审实测：无 `id` 的 notification 直连 stdio，**53ms** 内 `session/prompt` 回 `stopReason:"cancelled"`【实测】。据此**删掉** HTTP `abort` 路线与桥的 `acp --port` + 按路径分流（`29f8ea0`）；HALT 现在只发 notification，并有 10s 看门狗：超时未收到回合结束就显式报 `CANCEL UNCONFIRMED`，不再拿 HTTP 200 当成功（F2） |
+| 2 | 会话列表 + 网页端删除 | **主人已过 · 但发现引擎侧不一致（F21）** | 整行=LOAD、`×`=删除；不自动建会话；左轨/右栏/空态三处青色主操作新建；删除走引擎 HTTP；存储 `%USERPROFILE%\.local\share\opencode\`。**2026-09-24 实测新增**：`DELETE` 得 200、`GET` 得 404，但 ACP 的 `session/list` **仍列出该会话**（split-brain，F21）；已实测 `session/close` 可消除（两种顺序都行），**修法尚未接线**——删除目前仍只发一个 DELETE |
 | 2b | 打开即建垃圾会话 | **已修** | handshake 只 `initialize` + `session/list`；首条指令才 `session/new`（queued）；删当前会话不再自动再开 |
 | 2c | BUILD/PLAN 点了像死 | **已修待目视** | 点击即乐观切换 `aria-pressed` 并本地改 `currentValue`，再发 `set_config_option`；缺会话时写 LAST ERROR |
 | 2d | 舞台标题仍可能撑爆 | **已修** | `#topic` 单行 nowrap+ellipsis + `shortTopic` 28 字 |
@@ -36,9 +36,10 @@ A 的载体 `current-state.md`、B 的载体 `recommendation.md` 已标【仅历
 | 10 | 审批无界面 | **已实现 · 待主人目视** | 底栏 `[ APPROVAL ]` 条：按引擎 `options` 渲三档按钮并回 `{outcome:{outcome:"selected",optionId}}`（与 trace 同形）。默认配置引擎不问（需 `permission.*="ask"`）——右栏 APPROVAL 空闲时写 `NOT REQUESTED` |
 | 11 | 闸门假阴性 | **已修** | 控件扫描 + `app/ui-manifest.json` 清单制（缺分类 / 陈旧 / 无引用 → 构建失败） |
 
-**计数**：**11/11 有代码**。#2、#5–#9 主人已过；#10 待目视；**#1 代码接入，但立论被契约审计推翻，待架构重验 + 待目视**。  
-**优先级（2026-09-24 重排）**：**契约修复优先于一切新功能** —— 先做 [`engine-contract-audit.md`](./engine-contract-audit.md) §5 的 P0-a…P0-d（notification cancel 端到端验证、契约补 `prompt.failed`/`link.down`/`permission.cancelled`、`session/update` 按 `sessionId` 路由、请求 id 分域），再回来做 #1/#10 目视与功能项。  
-**理由**：审计确认此前对引擎的契约知识全部来自抓包反推，**无人读过引擎源码**，且多处反推错了。在不修契约前继续堆功能等于在屎山上加盖。  
+**计数**：**11/11 有代码**。#2、#5–#9 主人已过；#10 待目视；**#1 已按实测重写（分流删除），待目视**。  
+**优先级（2026-09-24 两次更新）**：契约修复优先于一切新功能。**第一批已完成**：P0-a（notification cancel 端到端）· P0-a'（删分流、HALT 改 stdio）· P0-b（`prompt.failed`/`link.down`/`sessions.unavailable`/`permission.cancelled` + 错误不再映射成成功）· P0-c（`session/update` 按 `sessionId` 路由，非当前会话的更新丢弃并报出）· P0-d 的一部分（改为按**报文形状**判定响应，见下）· P0-e 实验部分（`session/close` 消除 split-brain，未接线）。  
+**一处偏离审计建议**：P0-d 原写「请求 id 与引擎 id 分域」。**JSON-RPC 做不到**——id 由发起方自选，我方无法规定引擎不从 0 开始。实际改法是判响应看**形状**（响应无 `method` 且有 `result`/`error`，且该 id 确实在等），因此撞号不再可能把引擎的审批请求当响应吞掉；RESTART 另加 `pending.clear()` 与未决审批的 `cancelled` 回执。  
+**理由**：审计确认此前对引擎的契约知识主要来自抓包反推，多处反推错了；在不修契约前继续堆功能等于在未验证的假设上加层。  
 **汇报要求**：「已知未做」必须与「已完成」并列；清单未勾完前，「闸全绿」不作为交付证据。
 
 ## 契约审计（2026-09-24，本次最重要的交付）
@@ -64,6 +65,38 @@ A 的载体 `current-state.md`、B 的载体 `recommendation.md` 已标【仅历
 完整对照与建议优先级见 [`capability-map.md`](./capability-map.md)。  
 **结构空洞（摘要，与验收清单并列）**：**无项目/cwd 选择**（固定 `app/.sandbox`，桥 `/spawn` 已可收 cwd、UI 未暴露）；**无项目配置入口**（`permission.*=ask` 无法从 app 定位/编辑 → #10 默认不触发且无解释）；无 diff/文件/终端/搜索/图片等工作面；HTTP 透传按路径分流（仅 `/abort` → ACP 端口，其余 → serve），**分流状态未端到端复测**。**HALT（#1）代码接入：待复测、待主人目视。**  
 **建议优先级（未拍板）**：cwd 选择器、配置面、多会话、fork/resume/close、审批 diff——详见能力全图 §3（其第 1 项 HALT 已代码接入，未复测/未目视）。
+
+## 2026-09-24（批次 1）：视觉层固化 + HALT 重做 + 契约诚实层
+
+无人值守执行，计划见 [`plan-contract-repair.md`](./plan-contract-repair.md)。**已完成的部分有单测，接上但未覆盖测试的部分列在下面**，不混为一谈。
+
+**提交**：`b392e82` 视觉层独立性闸 · `91b5810` 盲审证据入库 · `29f8ea0` HALT 改 stdio notification 并删分流 · `ddb93cf` split-brain 缓解实测 · `2106010` 规则落盘 · `c4811e7` 契约表闭合 F1/F21。
+
+**闸门现状**（`npm run check:all`，EXIT 0）：tsc 严格 · **70 项测试**（批次开始时 52，新增 12 项契约失败路径 + 5 项边界闸 + 3 项 HALT）· `check:app` 11 控件 0 悬空 · `check:boundary` 5 个视觉层文件 0 越界 · `check:traces` 25 份报文 · `check:docs` 链接全解。
+
+**这一批改了什么行为**（不是改代码，是改"界面在故障时说真话"）：
+
+| 审计条目 | 之前屏幕上会发生 | 现在 |
+| --- | --- | --- |
+| F6 | `session/list` 出错 → 显示 `NO SESSIONS · CREATE ONE`（把故障编成事实） | 保留上次列表 + 顶一条 `LIST FAILED · <原因>` + `↻ RETRY LIST`；真·空列表与取不到列表是两个不同状态 |
+| F7 | `session/prompt` 返错 → 无事件，永远 `[ RUNNING ]` | `prompt.failed` 事件，`busy` 释放，`[ READY ]` + `TURN FAILED` + lastError |
+| F7 | 字节通道断了 → 仍显示 `LINK OK` | `stream.onerror` → `link.down` → `[ LINK DOWN ]` + `PRESS RESTART ⟲`；EventSource 自动重连，恢复时 `open` 清掉该状态 |
+| F6 | `session/load` 失败 → 伪造 `session.opened`，显示 `[ READY ]` 并把排队指令发进未打开的会话 | 伪造路径已删；失败就报失败，输入框回到可重试 |
+| F4 | 别的会话/已放弃的旧 turn 的 chunk 混进当前流 | 每条 `session/update` 按 `params.sessionId` 判归属，非当前会话的更新**丢弃并显式报出**（不静默丢） |
+| F5 | 引擎审批请求（id 从 0 起）与我方 pending 同号 → 被当响应吞掉，审批条不出现、永久挂死 | 响应按**形状**判定（响应无 `method` 且有 `result`/`error` 且 id 在等）；RESTART 清 `pending` |
+| F10 | turn 取消 / RESTART 时未决审批永不回执 | 回 `outcome:"cancelled"`（该回复走引擎请求 id，单独记账于 `respondToEngineRequest`），界面 `PERMISSION CANCELLED` |
+| F2 | HALT 拿 HTTP 2xx 当中断成功 | HTTP `abort` 通路整体删除；HALT 只发 stdio notification，10s 内无回合结束则显式 `CANCEL UNCONFIRMED` |
+
+**已知未做 / 只做了一半（必读，与上表并列）**
+
+- **F21 的修法没接线**：`session/close → DELETE` 已实测有效，但删除动作目前仍只发一个 DELETE。幽灵会话问题还在。
+- **批次 1 的判定逻辑住在 `main.ts` / `transport.ts`，这两个文件零测试**（正是 F16）。已测的是纯函数层：`failureEvents`、`errorReasonOf`、`reduceView` 对新 kind 的处理、`translateLine` 报告 sessionId。因此：**"列表失败不清空"、"跨会话丢弃"、"LINK DOWN 检测"三条我只证明了决策函数正确，没证明接线正确**——需要真浏览器点一次，或者 T7 给 `main.ts` 建可测出口。
+- `link.down` 只覆盖 SSE 通道报错；dev server 整体消失由既有 `engine.exited` 兜住，两者未统一成一个连接状态机。
+- 视觉层表现**我没有看过**（无头浏览器禁用），不声称看过。目视点列在下面的验收请求里。
+- 撤稿**只传播了 1/6 文件**（`adapters/opencode-acp.md` 由我补完）：`status.md` 已同步；`handover.md`、`capability-map.md`、`backends/opencode.md` 仍含旧错话，属批次 2。
+- F17 jsdom：例外已在 `AGENTS.md` 登记（窄到 `test/**` 结构断言）。`tools/check-app.mjs` 的动态控件清单我写到一半发现属批次 T7 范围，**已回退**，半成品存 `tasks/T29/check-app-dynamic-controls.wip.mjs`。
+- F20 `cwd: "."`：仍发相对路径，"违反 ACP" 那句证据等级已降为【文档/未验】。未改。
+- 引擎存储里还留着探针造的测试会话（含本批次 `spike/` 跑出的），未清理。
 
 ## 范式更新（2026-09-23，死键二次回潮后）
 

@@ -13,7 +13,7 @@
  */
 
 import { translateLine } from "./engine/acp.ts";
-import { mapResponse } from "./engine/responses.ts";
+import { mapResponse, errorReasonOf, failureEvents } from "./engine/responses.ts";
 import { deleteSession } from "./engine/engine-http.ts";
 import { cancelNotificationLine } from "./engine/cancel.ts";
 import type { AgentEvent } from "./contract/events.ts";
@@ -60,8 +60,8 @@ const phaseOf = (event: AgentEvent): ActivityPhase | null => {
 let cadence: Cadence = startCadence();
 let eventLog: EventLogEntry[] = [];
 const sessionStartedAt = { at: Date.now() };
-/** Target of an in-flight session/load — the response may omit sessionId. */
-let pendingLoadId: string | undefined;
+/** A load we asked for but have not seen the response to — kept so a dropped response is
+ *  visible, never to invent a `session.opened` (audit F6 removed that fabrication). */
 /** Instruction typed before a session existed; sent after session/new opens. */
 let queuedPrompt: string | undefined;
 
@@ -81,6 +81,10 @@ const describe = (event: AgentEvent): string => {
     case "permission.requested": return `${event.summary || event.requestId} · ${event.options.length} option(s)`;
     case "permission.resolved": return `${event.requestId} → ${event.optionId}`;
     case "prompt.ended": return `stop reason ${event.stopReason}`;
+    case "prompt.failed": return `turn failed · ${event.reason}`;
+    case "sessions.unavailable": return `list unavailable · ${event.reason}`;
+    case "link.down": return `channel down · ${event.reason}`;
+    case "permission.cancelled": return `${event.requestId} → cancelled`;
     case "engine.stderr": return event.text;
     case "engine.exited": return `code ${event.code ?? "—"} · signal ${event.signal ?? "—"}`;
     case "message.unmapped": return `from ${src}`;
@@ -131,7 +135,20 @@ const apply = (events: readonly AgentEvent[]): void => {
     view = reduceView(view, event, now);
     const phase = phaseOf(event);
     if (phase !== null) cadence = observeActivity(cadence, phase, now, event.kind);
-    if (event.kind === "prompt.ended") cadence = endTurn(cadence);
+    // A turn ends two ways and both must release `busy` and close the cadence sample: politely
+    // (`prompt.ended`) or by error (`prompt.failed`). Only the first was handled, which is how a
+    // failed prompt left the dock stuck on `[ RUNNING ]` over an already idle engine (audit F7).
+    if (event.kind === "prompt.ended" || event.kind === "prompt.failed") {
+      cadence = endTurn(cadence);
+      patch(
+        event.kind === "prompt.ended"
+          ? { busy: false, phase: "[ READY ]", phaseNote: `TURN ENDED · ${event.stopReason.toUpperCase()}`, ...silenceNow() }
+          : { busy: false, phase: "[ READY ]", phaseNote: "TURN FAILED · SEE LAST ERROR", lastError: event.reason, ...silenceNow() },
+      );
+    }
+    if (event.kind === "sessions.unavailable") {
+      patch({ phaseNote: `SESSION LIST FAILED · ${event.reason.slice(0, 60)}`, ...silenceNow() });
+    }
   }
   ui.render(view);
   patch(silenceNow());
@@ -152,24 +169,8 @@ const refreshSessions = (): void => {
 };
 
 /** Responses carry facts the notifications do not: the session id and the option menu. */
-const handleResponse = (id: number, method: string, result: unknown): boolean => {
+const handleResponse = (method: string, result: unknown): boolean => {
   let mapping = mapResponse(method, result);
-  if (method === "session/load") {
-    // Replay can arrive with no sessionId on the response; the operator asked for pendingLoadId.
-    const openId = mapping.sessionId ?? pendingLoadId;
-    pendingLoadId = undefined;
-    if (openId !== undefined) {
-      const events = [...mapping.events];
-      if (!events.some((event) => event.kind === "session.opened")) {
-        events.push({
-          kind: "session.opened",
-          from: { method: "session/load.response", variant: undefined },
-          sessionId: openId,
-        });
-      }
-      mapping = { ...mapping, sessionId: openId, events };
-    }
-  }
   if (mapping.agentName !== undefined) patch({ engine: mapping.agentName });
   if (mapping.sessionId !== undefined) {
     if (view.sessionId !== undefined && view.sessionId !== mapping.sessionId) {
@@ -214,42 +215,75 @@ const handleResponse = (id: number, method: string, result: unknown): boolean =>
     });
     send("session/prompt", { sessionId: view.sessionId, prompt: [{ type: "text", text }] });
   }
-  for (const event of mapping.events) {
-    if (event.kind === "prompt.ended") {
-      patch({ busy: false, phase: "[ READY ]", phaseNote: `TURN ENDED · ${event.stopReason.toUpperCase()}` });
-      patch(silenceNow());
-    }
-  }
+  // Turn-end state is driven from `apply()` only — one funnel for the event stream (rule 3).
   return mapping.recognised;
 };
 
+/**
+ * A line is a *response* to something we sent only when it has no `method` and carries a
+ * `result`/`error` for an id we are actually waiting on.
+ *
+ * Checking the shape rather than the number is deliberate. Audit F5 proposed separating the
+ * client and engine id *ranges*, which cannot work in JSON-RPC: the engine picks its own ids
+ * (measured starting at `0`, traces/opencode/opencode-acp-2026-09-23T05-59-54-343Z-prompt.jsonl:29)
+ * and we have no say in them. What we can do is refuse to treat an inbound *request* as a
+ * response just because the integers happen to collide — that collision is how an approval
+ * prompt gets swallowed and the turn hangs forever.
+ */
+interface OutgoingResponse {
+  readonly id: number;
+  /** The method we sent under this id; undefined if we somehow lost the record. */
+  readonly method: string | undefined;
+  readonly result: unknown;
+  readonly error: unknown;
+}
+
+const asOutgoingResponse = (parsed: { id?: number | string; method?: string; result?: unknown; error?: unknown } | undefined): OutgoingResponse | undefined => {
+  if (parsed === undefined || typeof parsed.id !== "number" || parsed.method !== undefined) return undefined;
+  if (parsed.result === undefined && parsed.error === undefined) return undefined;
+  const entry = pending.get(parsed.id);
+  if (entry === undefined) return undefined;
+  pending.delete(parsed.id);
+  return { id: parsed.id, method: entry.method, result: parsed.result, error: parsed.error };
+};
+
 const handleLine = (line: string): void => {
-  let id: number | undefined;
-  let method: string | undefined;
-  let parsed: { id?: number; result?: unknown; error?: unknown } | undefined;
+  let parsed: { id?: number | string; method?: string; params?: unknown; result?: unknown; error?: unknown } | undefined;
   try {
     parsed = JSON.parse(line) as typeof parsed;
-    if (parsed !== undefined && typeof parsed.id === "number" && pending.has(parsed.id)) {
-      id = parsed.id;
-      method = pending.get(parsed.id)?.method;
-      pending.delete(parsed.id);
-      if (parsed.error !== undefined) patch({ lastError: JSON.stringify(parsed.error).slice(0, 160) });
-    }
   } catch {
     // not JSON — the adapter counts it as unmapped, which is the honest outcome
   }
-  if (id !== undefined && method !== undefined && parsed !== undefined && handleResponse(id, method, parsed.result)) return;
-  // User actions that failed must leave the dock usable and say why (no silent dead-end).
-  if (id !== undefined && method !== undefined && parsed?.error !== undefined) {
-    if (method === "session/new" || method === "session/load") {
-      queuedPrompt = undefined;
-      pendingLoadId = undefined;
-      ui.setCommandEnabled(true);
-      ui.setPlaceholder("OPEN FAILED · + NEW OR TYPE TO RETRY");
-    }
-  }
-  apply(translateLine(line).events);
 
+  const response = asOutgoingResponse(parsed);
+  if (response !== undefined) {
+    const known = response.method ?? "unknown";
+    if (response.error !== undefined) {
+      patch({ lastError: errorReasonOf(response.error) });
+      if (known === "session/new" || known === "session/load") {
+        // Failed opens must leave the dock usable and say why — no silent dead end (rule §五.3).
+        queuedPrompt = undefined;
+        ui.setCommandEnabled(true);
+        ui.setPlaceholder("OPEN FAILED · + NEW OR TYPE TO RETRY");
+        patch({ phase: "[ READY ]", phaseNote: `OPEN FAILED · ${known === "session/load" ? "PICK A SESSION OR + NEW" : "RETRY + NEW"}` });
+      }
+      apply(failureEvents(known, response.error));
+      return;
+    }
+    if (handleResponse(known, response.result)) return;
+    apply([{ kind: "message.unmapped", from: { method: `${known}.response`, variant: undefined } }]);
+    return;
+  }
+
+  // Notification or an engine→client request. Route by the session it names (audit F4): before
+  // this, chunks from another session — or from a turn already abandoned — were appended to
+  // whatever the operator was looking at.
+  const translation = translateLine(line);
+  if (translation.sessionId !== undefined && view.sessionId !== undefined && translation.sessionId !== view.sessionId) {
+    patch({ lastError: `dropped update for session ${translation.sessionId.slice(0, 12)}… (showing ${view.sessionId.slice(0, 12)}…)`, phaseNote: "CROSS-SESSION UPDATE DROPPED" });
+    return;
+  }
+  apply(translation.events);
 };
 
 const handshake = async (): Promise<void> => {
@@ -283,6 +317,13 @@ transport.onError((message) => {
   patch({ lastError: message.slice(0, 160) });
   apply([{ kind: "engine.stderr", from: { method: "stderr", variant: undefined }, text: message }]);
 });
+// The channel dropping used to be invisible: LINK stayed OK over a dead stream (audit F7).
+// Recovery is on-screen and clickable — RESTART is the way out, so point at it.
+transport.onLinkDown((reason) => {
+  ui.setLink("down");
+  patch({ busy: false, phase: "[ LINK DOWN ]", phaseNote: `CHANNEL ${reason.toUpperCase()} · PRESS RESTART ⟲`, lastError: `byte channel down: ${reason}` });
+  apply([{ kind: "link.down", from: { method: "stream", variant: undefined }, reason }]);
+});
 
 let currentView: "process" | "events" = "process";
 ui.onViewChange((next) => {
@@ -295,7 +336,6 @@ ui.onViewChange((next) => {
 const createSession = (why: string): void => {
   if (!engineReady(why)) return;
   queuedPrompt = undefined;
-  pendingLoadId = undefined;
   patch({ phase: "[ OPENING SESSION ]", phaseNote: `${why} · session/new`, busy: false, topic: undefined });
   ui.setView("process");
   ui.setCommandEnabled(true);
@@ -317,7 +357,6 @@ ui.onSessionsRefresh(() => {
 
 ui.onSessionLoad((sessionId, cwd) => {
   if (!engineReady("LOAD")) return;
-  pendingLoadId = sessionId;
   // Move the current-session rail immediately so the marker does not wait on the response.
   if (view.sessionId !== sessionId) {
     const sessions = view.sessions;
@@ -424,9 +463,42 @@ ui.onSubmit((text) => {
   send("session/prompt", { sessionId: view.sessionId, prompt: [{ type: "text", text }] });
 });
 
+/**
+ * Answer a still-unanswered `session/request_permission` with `cancelled`.
+ *
+ * ACP requires the client to cancel outstanding permission requests when a turn ends or the
+ * session tears down, and the engine folds `cancelled` into `reject` on its side
+ * (docs/engine-contract-audit.md F10). Before this there was no such branch: the request was
+ * simply never answered and the engine waited on a decision that no longer existed.
+ *
+ * The reply is a *response to an engine request*, so it carries the engine's id — that is why
+ * `respondToEngineRequest` is kept separate from `send()`'s outgoing bookkeeping (F5).
+ */
+const cancelOutstandingPermission = (why: string): void => {
+  const outstanding = view.permission;
+  if (outstanding !== undefined) {
+    const requestId = Number(outstanding.requestId);
+    if (Number.isInteger(requestId)) {
+      void transport
+        .write(JSON.stringify({ jsonrpc: "2.0", id: requestId, result: { outcome: { outcome: "cancelled" } } }))
+        .catch((error: unknown) => patch({ lastError: `could not cancel permission: ${String(error).slice(0, 120)}` }));
+      apply([{ kind: "permission.cancelled", from: { method: "session/request_permission", variant: undefined }, requestId: outstanding.requestId }]);
+      patch({ phaseNote: `PERMISSION CANCELLED · ${why}` });
+    } else {
+      // An id we cannot answer with is its own defect: say which, and still close the dock.
+      patch({ lastError: `permission ${outstanding.requestId} has no numeric request id; cannot answer cancelled`, phaseNote: `PERMISSION NOT CANCELLED · ${why}` });
+      apply([{ kind: "permission.cancelled", from: { method: "session/request_permission", variant: undefined }, requestId: outstanding.requestId }]);
+    }
+  }
+};
+
 ui.onRestart(() => {
   const binary = facts.binary;
   const cwd = facts.cwd;
+  cancelOutstandingPermission("RESTART");
+  // A restart orphans every request we had outstanding; leaving them in `pending` is how a
+  // later engine message got mistaken for an old response (audit F5).
+  pending.clear();
   view = emptyView();
   // Merge, never replace — replacing dropped `binary` and left + NEW silently dead.
   patch({

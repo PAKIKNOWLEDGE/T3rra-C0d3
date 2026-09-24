@@ -105,3 +105,42 @@ export const mapResponse = (method: string, result: unknown): ResponseMapping =>
 
   return { events, sessionId, agentName, recognised: false };
 };
+
+/**
+ * One failed request → one honest event. Never an empty result, never a fabricated open.
+ *
+ * Lives beside the success mapping on purpose: the two are one decision ("what did this reply
+ * mean"), and splitting them across modules is how the failure branch got forgotten. A failure
+ * rendered as an empty list claims knowledge the engine never gave us (rule 12 / audit F6).
+ */
+export const failureEvents = (method: string, error: unknown): readonly AgentEvent[] => {
+  const reason = errorReasonOf(error);
+  const from = { method: `${method}.error`, variant: undefined } as const;
+  switch (method) {
+    case "session/prompt":
+      // The turn is over even when it ends badly; without this `busy` never clears (F7).
+      return [{ kind: "prompt.failed", from, reason }];
+    case "session/list":
+      return [{ kind: "sessions.unavailable", from, reason }];
+    default:
+      return [{ kind: "message.unmapped", from }];
+  }
+};
+
+/**
+ * One-line reason extracted from a JSON-RPC error payload.
+ *
+ * Used instead of silently producing an empty result: a failure rendered as "no sessions" is
+ * a fabricated fact (rule 12 / audit F6), so the caller needs a string it can display.
+ */
+export const errorReasonOf = (error: unknown): string => {
+  if (typeof error === "string") return error.slice(0, 160);
+  if (error !== null && typeof error === "object") {
+    const record = error as { code?: unknown; message?: unknown };
+    const message = typeof record.message === "string" ? record.message : "";
+    const code = typeof record.code === "number" ? `code ${record.code}` : "";
+    const joined = [code, message].filter((part) => part !== "").join(" · ");
+    if (joined !== "") return joined.slice(0, 160);
+  }
+  return "engine returned an error with no message";
+};

@@ -39,7 +39,7 @@
     },
     "halt": {
       "wired": true,
-      "role": "dock: interrupt the running turn (HTTP POST /session/{id}/abort on the ACP process' own port); also Esc in the input"
+      "role": "dock: interrupt the running turn; also Esc in the input"
     },
     "restart": {
       "wired": true,

@@ -31,6 +31,8 @@ export interface Transport {
   onLine(handler: (line: string) => void): void;
   onExit(handler: (info: { code: number | null; signal: string | null }) => void): void;
   onError(handler: (message: string) => void): void;
+  /** The byte channel itself dropped (bridge restart, page left, dev server gone). */
+  onLinkDown(handler: (reason: string) => void): void;
   dispose(): void;
 }
 
@@ -41,7 +43,10 @@ export const createBridgeTransport = (clientId: string): Transport => {
   const lineHandlers: ((line: string) => void)[] = [];
   const exitHandlers: ((info: { code: number | null; signal: string | null }) => void)[] = [];
   const errorHandlers: ((message: string) => void)[] = [];
+  const linkDownHandlers: ((reason: string) => void)[] = [];
   let stream: EventSource | undefined;
+  /** Whether the channel was up the last time we looked, so a flap reports once per transition. */
+  let linkUp = false;
 
   const post = async (path: string, body: unknown): Promise<void> => {
     const response = await fetch(`${PREFIX}${path}?${query}`, {
@@ -69,6 +74,18 @@ export const createBridgeTransport = (clientId: string): Transport => {
     stream.addEventListener("engine-error", (event) => {
       const info = JSON.parse((event as MessageEvent<string>).data) as { message?: string };
       for (const handler of errorHandlers) handler(info.message ?? "engine error");
+    });
+    // Without this the UI kept asserting LINK OK over a dead channel (audit F7). EventSource
+    // reconnects by itself, so "down" is a *transition* here, not a permanent state: `open`
+    // clears it when the pipe comes back.
+    stream.addEventListener("error", () => {
+      if (linkUp) {
+        linkUp = false;
+        for (const handler of linkDownHandlers) handler(`stream ${stream?.readyState === 0 ? "closed" : "reconnecting"}`);
+      }
+    });
+    stream.addEventListener("open", () => {
+      linkUp = true;
     });
   };
 
@@ -105,6 +122,9 @@ export const createBridgeTransport = (clientId: string): Transport => {
     },
     onError(handler): void {
       errorHandlers.push(handler);
+    },
+    onLinkDown(handler): void {
+      linkDownHandlers.push(handler);
     },
     dispose(): void {
       stream?.close();

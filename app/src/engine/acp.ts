@@ -18,6 +18,15 @@ export interface TranslationResult {
   readonly events: readonly AgentEvent[];
   /** True when the line was a response to something we sent rather than a notification. */
   readonly isResponse: boolean;
+  /**
+   * The session this line belongs to, read from `params.sessionId`.
+   *
+   * Every `session/update` carries it 【实测】, and dropping it was audit F4: chunks from another
+   * session (or from a turn already abandoned) were appended to whatever the UI currently shows.
+   * The router needs it; the events themselves stay session-blind so the view cannot sprout an
+   * engine shape the contract does not declare.
+   */
+  readonly sessionId: string | undefined;
 }
 
 interface JsonRpcLike {
@@ -99,24 +108,30 @@ const translateUpdate = (update: UpdateLike): AgentEvent => {
   }
 };
 
+/** `params.sessionId`, present on every `session/update` and on `session/request_permission`. */
+const sessionIdOf = (message: JsonRpcLike): string | undefined => {
+  const value = (message.params as { sessionId?: unknown } | undefined)?.sessionId;
+  return typeof value === "string" && value !== "" ? value : undefined;
+};
+
 export const translateLine = (line: string): TranslationResult => {
   let message: JsonRpcLike;
   try {
     message = JSON.parse(line) as JsonRpcLike;
   } catch {
-    return { events: [{ kind: "message.unmapped", from: { method: "unparsed", variant: undefined } }], isResponse: false };
+    return { events: [{ kind: "message.unmapped", from: { method: "unparsed", variant: undefined } }], isResponse: false, sessionId: undefined };
   }
 
   if (message.id !== undefined && (message.result !== undefined || message.error !== undefined)) {
     const stopReason = (message.result as { stopReason?: string } | null)?.stopReason;
     const events: AgentEvent[] = stopReason === undefined ? [] : [{ kind: "prompt.ended", from: { method: "session/prompt.response", variant: undefined }, stopReason }];
-    return { events, isResponse: true };
+    return { events, isResponse: true, sessionId: undefined };
   }
 
   if (message.method === "session/update") {
     const update = (message.params as { update?: UpdateLike } | undefined)?.update;
-    if (update === undefined) return { events: [{ kind: "message.unmapped", from: source("(no update payload)") }], isResponse: false };
-    return { events: [translateUpdate(update)], isResponse: false };
+    if (update === undefined) return { events: [{ kind: "message.unmapped", from: source("(no update payload)") }], isResponse: false, sessionId: sessionIdOf(message) };
+    return { events: [translateUpdate(update)], isResponse: false, sessionId: sessionIdOf(message) };
   }
 
   if (message.method === "session/request_permission") {
@@ -141,8 +156,9 @@ export const translateLine = (line: string): TranslationResult => {
         },
       ],
       isResponse: false,
+      sessionId: sessionIdOf(message),
     };
   }
 
-  return { events: [{ kind: "message.unmapped", from: { method: message.method ?? "(unknown)", variant: undefined } }], isResponse: false };
+  return { events: [{ kind: "message.unmapped", from: { method: message.method ?? "(unknown)", variant: undefined } }], isResponse: false, sessionId: sessionIdOf(message) };
 };

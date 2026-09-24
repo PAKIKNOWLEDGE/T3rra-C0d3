@@ -262,6 +262,8 @@
   .micro-btn--primary:hover { background: var(--ink); border-color: var(--ink); color: var(--base); }
   .sessions { display: grid; gap: 6px; }
   .sessions .empty { font-family: var(--f-mono); font-size: 11.5px; color: var(--dim); }
+  /* A list that could not be fetched is not an empty list — it reads as a fault, not as nothing. */
+  .sessions .empty--error { color: var(--err); }
   .sessions .micro-btn--primary { justify-self: start; min-height: 32px; }
   .session-row {
     position: relative;

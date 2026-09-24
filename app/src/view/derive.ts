@@ -45,6 +45,15 @@ export interface ConsoleView {
   readonly stream: readonly StreamEntry[];
   readonly tools: readonly ToolEntry[];
   readonly sessions: readonly SessionSummary[];
+  /**
+   * Why the session list could not be obtained, or undefined when the last attempt succeeded.
+   * Kept apart from `sessions` so a failure can never be displayed as "there are none" (F6).
+   */
+  readonly sessionsUnavailable: string | undefined;
+  /** Why the turn ended in error; the turn is over, but it did not end well (F7). */
+  readonly promptError: string | undefined;
+  /** Why the byte channel is down, or undefined while it is up (F7). */
+  readonly linkDown: string | undefined;
   readonly stopReason: string | undefined;
   /** Live approval waiting on the operator; undefined when none (or already resolved). */
   readonly permission: PendingPermission | undefined;
@@ -61,11 +70,11 @@ export const VIEW_BLOCKS: readonly BlockName[] = ["session", "options", "stream"
  * can be checked against both the contract's full kind list and the captured traffic.
  */
 export const BLOCK_PROVENANCE: Readonly<Record<BlockName, readonly AgentEventKind[]>> = {
-  session: ["session.opened", "sessions.updated", "sessions.removed", "permission.requested", "permission.resolved", "prompt.ended"],
+  session: ["session.opened", "sessions.updated", "sessions.unavailable", "sessions.removed", "permission.requested", "permission.resolved", "prompt.ended", "prompt.failed", "permission.cancelled"],
   options: ["options.updated"],
   stream: ["message.appended", "thought.appended", "tool.started", "tool.updated"],
   tools: ["tool.started", "tool.updated"],
-  transport: ["engine.stderr", "engine.exited", "message.unmapped"],
+  transport: ["engine.stderr", "engine.exited", "link.down", "message.unmapped"],
 };
 
 export const emptyView = (): ConsoleView => ({
@@ -74,6 +83,9 @@ export const emptyView = (): ConsoleView => ({
   stream: [],
   tools: [],
   sessions: [],
+  sessionsUnavailable: undefined,
+  promptError: undefined,
+  linkDown: undefined,
   stopReason: undefined,
   permission: undefined,
   unmapped: 0,
@@ -117,7 +129,12 @@ export const reduceView = (view: ConsoleView, event: AgentEvent, nowMs?: number)
       return { ...view, sessionId: event.sessionId };
 
     case "sessions.updated":
-      return { ...view, sessions: event.sessions };
+      return { ...view, sessions: event.sessions, sessionsUnavailable: undefined };
+
+    case "sessions.unavailable":
+      // Failure keeps the previous rows on screen and declares itself. Rendering it as an empty
+      // list would turn "cannot tell" into "there are none" — the exact defect audit F6 names.
+      return { ...view, sessionsUnavailable: event.reason };
 
     case "sessions.removed":
       return { ...view, sessions: view.sessions.filter((item) => item.sessionId !== event.sessionId) };
@@ -209,6 +226,19 @@ export const reduceView = (view: ConsoleView, event: AgentEvent, nowMs?: number)
 
     case "prompt.ended":
       return { ...view, stopReason: event.stopReason };
+
+    case "prompt.failed":
+      // An errored `session/prompt` still ends the turn; without this arm `busy` never clears
+      // and the dock sits on `[ RUNNING ]` with a stopped engine behind it (audit F7).
+      return { ...view, promptError: event.reason };
+
+    case "link.down":
+      return { ...view, linkDown: event.reason };
+
+    case "permission.cancelled":
+      // The request will never be answered. Clearing the dock without inventing an
+      // `optionId` is what keeps this honest (audit F10).
+      return view.permission?.requestId === event.requestId ? { ...view, permission: undefined } : view;
 
     case "engine.stderr":
     case "engine.exited":

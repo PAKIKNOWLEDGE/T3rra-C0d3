@@ -11,6 +11,7 @@
  */
 
 import type { ConsoleView, StreamEntry } from "../view/derive.ts";
+import type { SessionSummary } from "../contract/events.ts";
 import { toSeconds, type SilenceReport } from "../view/cadence.ts";
 import { renderMarkdown } from "./markdown.ts";
 import { groupTurns } from "./turns.ts";
@@ -128,6 +129,8 @@ export const mountConsole = (): ConsoleHandles => {
   let sessionLoadHandler: (sessionId: string, cwd: string) => void = () => {};
   let sessionDeleteHandler: (sessionId: string) => void = () => {};
   let sessionCreateHandler: () => void = () => {};
+  /** Set by `onSessionsRefresh`; reused by the RETRY button the failed-list state creates. */
+  let sessionsRefreshHandler: () => void = () => {};
   let permissionSelectHandler: (requestId: string, optionId: string) => void = () => {};
   let optionSignature = "";
   let sessionSignature = "";
@@ -324,15 +327,93 @@ export const mountConsole = (): ConsoleHandles => {
    *  - not busy: the anchor falls back to the session clock, and the comparison line says the
    *    silence is not measured at all, rather than pretending the session is stalling.
    */
+  /** One LOAD row. Shared by the normal list and the failed-list view, which must stay loadable. */
+  const sessionRow = (item: SessionSummary, openSessionId: string | undefined): HTMLElement => {
+    const isCurrent = item.sessionId === openSessionId;
+    // The whole row is the LOAD affordance; × is delete only (does not load).
+    const row = document.createElement("div");
+    row.className = isCurrent ? "session-row current" : "session-row";
+    row.dataset["sessionId"] = item.sessionId;
+    row.setAttribute("role", "button");
+    row.setAttribute("tabindex", "0");
+    row.setAttribute("aria-label", `Load session ${item.title !== "" ? item.title : item.sessionId}`);
+    if (isCurrent) row.setAttribute("aria-current", "true");
+
+    const title = document.createElement("div");
+    title.className = "session-title";
+    title.textContent =
+      item.title !== ""
+        ? item.title
+        : item.sessionId.length > 18
+          ? `${item.sessionId.slice(0, 12)}…${item.sessionId.slice(-4)}`
+          : item.sessionId;
+
+    const when = document.createElement("div");
+    when.className = "session-when";
+    when.textContent = item.updatedAt === "" ? "NOT STATED" : item.updatedAt;
+
+    const hint = document.createElement("div");
+    hint.className = "session-hint";
+    hint.textContent = isCurrent ? "OPEN · CLICK TO RELOAD" : "CLICK TO OPEN";
+
+    const del = document.createElement("button");
+    del.type = "button";
+    del.className = "session-del";
+    del.textContent = "×";
+    del.setAttribute("aria-label", `Delete session ${item.sessionId}`);
+    del.addEventListener("click", (event) => {
+      event.stopPropagation();
+      const label = item.title !== "" ? item.title : item.sessionId;
+      if (window.confirm(`Delete session?\n${label}\n\nThis cannot be undone from this UI.`)) {
+        sessionDeleteHandler(item.sessionId);
+      }
+    });
+
+    const load = (): void => {
+      // Re-opening the same session replays it — still a real action, not a no-op.
+      sessionLoadHandler(item.sessionId, item.cwd);
+    };
+    row.addEventListener("click", load);
+    row.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        load();
+      }
+    });
+
+    const body = document.createElement("div");
+    body.className = "session-body";
+    body.append(title, when, hint);
+    row.append(body, del);
+    return row;
+  };
+
   const renderSessions = (view: ConsoleView): void => {
     const signature = view.sessions.map((item) => item.sessionId).join("|");
     // Re-render when the list *or* the open session changes so the rail follows LOAD.
     const current = view.sessionId ?? "";
-    const full = `${signature}#${current}`;
+    const full = `${signature}#${current}#${view.sessionsUnavailable ?? ""}`;
     if (full === sessionSignature) return;
     sessionSignature = full;
 
     sessionsList.replaceChildren();
+    if (view.sessionsUnavailable !== undefined) {
+      // A failed list is not an empty list. The previous rows are still shown above this notice
+      // when there are any; when there are none this says "cannot tell", never "there are none"
+      // (audit F6), and it still offers a way out.
+      const failed = document.createElement("div");
+      failed.className = "empty empty--error";
+      failed.textContent = `LIST FAILED · ${view.sessionsUnavailable.slice(0, 60)}`.toUpperCase();
+      const retry = document.createElement("button");
+      retry.type = "button";
+      retry.className = "micro-btn micro-btn--primary";
+      retry.id = "sessionsRetry";
+      retry.textContent = "↻ RETRY LIST";
+      retry.addEventListener("click", () => sessionsRefreshHandler());
+      sessionsList.append(failed, retry);
+      for (const item of view.sessions) sessionsList.append(sessionRow(item, view.sessionId));
+      return;
+    }
     if (view.sessions.length === 0) {
       // Empty list must offer the recovery action here — a dead-end panel is a dead control.
       const empty = document.createElement("div");
@@ -347,70 +428,7 @@ export const mountConsole = (): ConsoleHandles => {
       sessionsList.append(empty, create);
       return;
     }
-    for (const item of view.sessions) {
-      const isCurrent = item.sessionId === view.sessionId;
-      // The whole row is the LOAD affordance; × is delete only (does not load).
-      const row = document.createElement("div");
-      row.className = isCurrent ? "session-row current" : "session-row";
-      row.dataset["sessionId"] = item.sessionId;
-      row.setAttribute("role", "button");
-      row.setAttribute("tabindex", "0");
-      row.setAttribute("aria-label", `Load session ${item.title !== "" ? item.title : item.sessionId}`);
-      if (isCurrent) row.setAttribute("aria-current", "true");
-
-      const title = document.createElement("div");
-      title.className = "session-title";
-      title.textContent =
-        item.title !== ""
-          ? item.title
-          : item.sessionId.length > 18
-            ? `${item.sessionId.slice(0, 12)}…${item.sessionId.slice(-4)}`
-            : item.sessionId;
-
-      const when = document.createElement("div");
-      when.className = "session-when";
-      when.textContent = item.updatedAt === "" ? "NOT STATED" : item.updatedAt;
-
-      const hint = document.createElement("div");
-      hint.className = "session-hint";
-      hint.textContent = isCurrent ? "OPEN · CLICK TO RELOAD" : "CLICK TO OPEN";
-
-      const del = document.createElement("button");
-      del.type = "button";
-      del.className = "session-del";
-      del.textContent = "×";
-      del.setAttribute("aria-label", `Delete session ${item.sessionId}`);
-      del.addEventListener("click", (event) => {
-        event.stopPropagation();
-        const label = item.title !== "" ? item.title : item.sessionId;
-        if (window.confirm(`Delete session?\n${label}\n\nThis cannot be undone from this UI.`)) {
-          sessionDeleteHandler(item.sessionId);
-        }
-      });
-
-      const load = (): void => {
-        if (isCurrent) {
-          // Re-open the same session (replay again) — still a real action.
-          sessionLoadHandler(item.sessionId, item.cwd);
-          return;
-        }
-        sessionLoadHandler(item.sessionId, item.cwd);
-      };
-      row.addEventListener("click", load);
-      row.addEventListener("keydown", (event) => {
-        if (event.key === "Enter" || event.key === " ") {
-          event.preventDefault();
-          load();
-        }
-      });
-
-      const body = document.createElement("div");
-      body.className = "session-body";
-      body.append(title, when, hint);
-
-      row.append(body, del);
-      sessionsList.append(row);
-    }
+    for (const item of view.sessions) sessionsList.append(sessionRow(item, view.sessionId));
   };
 
   const renderApproval = (view: ConsoleView): void => {
@@ -562,6 +580,7 @@ export const mountConsole = (): ConsoleHandles => {
     },
     onSessionsRefresh(handler): void {
       sessionsRefresh.addEventListener("click", handler);
+      sessionsRefreshHandler = handler; // the failure-state RETRY reuses this one action
     },
     onSessionLoad(handler): void {
       sessionLoadHandler = handler;
