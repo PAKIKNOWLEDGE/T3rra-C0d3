@@ -12,6 +12,7 @@
 | --- | --- |
 | [`status.md`](./status.md) | **先读**：现状、已决定事项、验收清单、事故记录 |
 | [`handover.md`](./handover.md) | 运行方式、完成度三分、规矩、证据地图 |
+| [`capability-map.md`](./capability-map.md) | **coding-agent 能力全图**：已有/半截/缺失、结构空洞、建议优先级（未拍板） |
 | [`adapters/opencode-acp.md`](./adapters/opencode-acp.md) | 引擎实测映射表：报文、契约行为、有损列、未闭合项 |
 | [`visual-guide.md`](./visual-guide.md) | 视觉优化：硬约束与可重构边界、防悬空对照表 |
 | [`design-contract.md`](./design-contract.md) | 界面做法：ark 族 · complex · 仅暗色；§二 起可替换 |

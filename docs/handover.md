@@ -1,6 +1,6 @@
 # 交接说明
 
-面向接手本仓库的开发者或代理。阅读顺序：本文件 → [`status.md`](./status.md)（现行真相）→ [`../AGENTS.md`](../AGENTS.md)（结构与通用规矩）。
+面向接手本仓库的开发者或代理。阅读顺序：本文件 → [`status.md`](./status.md)（现行真相、验收账）→ [`capability-map.md`](./capability-map.md)（能力全图与缺口）→ [`../AGENTS.md`](../AGENTS.md)（结构与通用规矩）。
 
 ## 一、如何运行
 
@@ -25,13 +25,14 @@ npm run check:all                            # 六道闸，提交前须全绿
 - **会话恢复能力**：`session/load` 以普通 `session/update` 回放历史，**先流完、响应后到**（规范行为）。证据：`traces/opencode/*-load-redacted.jsonl`、`*-sequencing-redacted.jsonl`（含 `load_timing`）。  
   **界面 LOAD 已接**（会话列表按钮，见 #2）。
 - **静默判据（规则 7–9）**：`app/src/view/cadence.ts` + `test/cadence.test.ts`（10 例）。基线 = 当前相位间隔中位数、`×8/×25`、样本 &lt;3 拒绝给判据、10 分钟硬上限仅兜底、非运行期间丢弃、换 model 丢样本。界面：大锚点=静默秒数、`[ SIGNAL ]` 面板。
-- **六道闸 + 清单制**：`tsc` · vitest 49 条 · `check:app`（`app/ui-manifest.json` + 字体 38/38 + 渲染层 id）· `check:demo` · `check:traces` · `check:docs`。
+- **六道闸 + 清单制**：`tsc` · vitest 50 条 · `check:app`（`app/ui-manifest.json` + 字体 38/38 + 渲染层 id）· `check:demo` · `check:traces` · `check:docs`。
 - **EVENTS 视图**（`+秒数 / kind / 事实描述`）与 **NEW**（`session/new`，id 变更才清空）。
 - **对话区（验收 #5–#9）**：回合分组、工具行按到达序内嵌、时间戳、安全 markdown、reasoning 真折叠、输入焦点左侧色条、锚点缩号。见 `derive.ts` 统一流、`ui/turns.ts`、`ui/markdown.ts`。  
   **主人目视 2026-09-23「通过」**。舞台标题只取指令首行截断（曾整段进 `h1` 撑爆，已修）。
-- **会话列表 + 删除（验收 #2，已实现待目视）**：右栏 `[ SESSIONS ]`；列表/加载走 ACP，删除走桥 `/http` → `opencode serve`。测试 `test/sessions.test.ts`。  
+- **会话列表 + 删除（验收 #2，主人已过）**：右栏 `[ SESSIONS ]`；列表/加载走 ACP，删除走桥 `/http` → `opencode serve`。测试 `test/sessions.test.ts`。  
   **状态机**：打开页面**不**自动 `session/new`；首条指令排队创建；删当前会话不再自动再开。BUILD/PLAN 点击乐观切换。  
-  **删除落盘**【部分实测】：引擎数据在 `%USERPROFILE%\.local\share\opencode\`（`opencode.db` + `storage/session_diff/ses_*.json`）。HTTP DELETE 后列表应消失；**session_diff 是否清掉【未验】**——本机曾堆大量空 diff（与自动建会话有关）。
+  **删除落盘**【部分实测】：引擎数据在 `%USERPROFILE%\.local\share\opencode\`（`opencode.db` + `storage/session_diff/ses_*.json`）。HTTP DELETE 后列表应消失；**session_diff 是否清掉【未验】**。
+- **审批条（验收 #10，已实现待目视）**：见下「半完成 · 待目视」。
 
 ### 半完成
 
@@ -50,6 +51,15 @@ npm run check:all                            # 六道闸，提交前须全绿
 
 - **审批界面（验收 #10，已实现待目视）**：底栏 `[ APPROVAL ]` 按引擎 options 渲按钮并回包。须 `permission.*="ask"` 才会触发。
 - **`RESTART ⟲`**：真动作（杀进程重开），但是**粗中断**。重开后可用会话列表 LOAD 回放。
+
+### 已知结构缺口（与验收 #1 并列；详见 [`capability-map.md`](./capability-map.md)）
+
+| 缺口 | 一句话 |
+| --- | --- |
+| **无项目/cwd 入口** | 一切在 `app/.sandbox`；桥 `/spawn` 可收 cwd，UI 未暴露 |
+| **无项目配置入口** | app 内找不到/改不了 `opencode.json` / `permission.*` → 审批默认不问无 UI 解释 |
+| **无 diff/文件/终端/图片等工作面** | HTTP 通道可搭，产品侧未接（现仅 DELETE） |
+| 多会话并发 | 单 transport、单打开会话 |
 
 ### 开放项（未排期）
 

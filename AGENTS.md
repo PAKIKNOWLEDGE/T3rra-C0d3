@@ -44,15 +44,16 @@
 - 探针（`spike/`）只写 `traces/`，`src/` 永不 import `spike/`。
 - 换引擎的验证步骤与计划见 `docs/recommendation.md`。
 
-## 四、阅读顺序
+## 四、阅读顺序（空上下文从这里进）
 
 1. 本文件  
-2. [`docs/status.md`](./docs/status.md) — 现行真相、验收清单  
+2. [`docs/status.md`](./docs/status.md) — 现行真相、验收清单、已拍板优先级  
 3. [`docs/handover.md`](./docs/handover.md) — 运行方式、完成度三分、规矩与证据地图  
-4. [`docs/visual-guide.md`](./docs/visual-guide.md) — 做视觉前读  
-5. [`docs/design-contract.md`](./docs/design-contract.md)、[`docs/design-critique.md`](./docs/design-critique.md)  
-6. [`docs/recommendation.md`](./docs/recommendation.md)、[`docs/adapters/opencode-acp.md`](./docs/adapters/opencode-acp.md)  
-7. 旧仓 `NIX\t3rra-core` **只读**：需要规则原文时读其 `AGENTS.md`、`docs/event-model.md`、`docs/adapters/acp.md`
+4. [`docs/capability-map.md`](./docs/capability-map.md) — coding-agent 能力全图（有/缺/结构空洞）  
+5. [`docs/visual-guide.md`](./docs/visual-guide.md) — 做视觉前读  
+6. [`docs/design-contract.md`](./docs/design-contract.md)、[`docs/design-critique.md`](./docs/design-critique.md)  
+7. [`docs/recommendation.md`](./docs/recommendation.md)、[`docs/adapters/opencode-acp.md`](./docs/adapters/opencode-acp.md)  
+8. 旧仓 `NIX\t3rra-core` **只读**：需要规则原文时读其 `AGENTS.md`、`docs/event-model.md`、`docs/adapters/acp.md`
 
 ## 五、开工前硬规矩（范式，不许绕）
 
