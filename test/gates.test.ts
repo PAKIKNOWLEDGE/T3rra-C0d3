@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { resolveEngineCandidates } from "../app/src/engine/resolve.ts";
-import { checkDemo, collectObservations, parseCitedTracePaths, parseDocKindTable } from "../tools/lib.mjs";
+import { checkBoundary, checkDemo, collectObservations, parseCitedTracePaths, parseDocKindTable } from "../tools/lib.mjs";
 
 describe("engine resolution", () => {
   it("puts opencode first when the environment says so", () => {
@@ -89,5 +89,43 @@ describe("demo gate", () => {
     const { failures } = checkDemo(leaky);
     expect(failures.join(" | ")).toMatch(/external references/);
     expect(failures.join(" | ")).toMatch(/prefers-reduced-motion/);
+  });
+});
+
+describe("boundary gate", () => {
+  const visual = { path: "app/src/ui/console.ts", source: 'import type { ConsoleView } from "../view/derive.ts";\nimport { join } from "node:path";\n' };
+  const engineShaped = { path: "app/src/engine/acp.ts", source: 'import type { AgentEvent } from "../contract/events.ts";\n' };
+
+  it("lets the visual layer depend on the contract and on itself", () => {
+    const { violations, scanned } = checkBoundary([visual, engineShaped]);
+    expect(violations).toEqual([]);
+    expect(scanned).toEqual(["app/src/ui/console.ts"]);
+  });
+
+  it("catches a visual file reaching into the engine layer", () => {
+    const bad = { ...visual, source: 'import { translateLine } from "../engine/acp.ts";\n' };
+    const { violations } = checkBoundary([bad]);
+    expect(violations).toEqual([{ file: "app/src/ui/console.ts", specifier: "../engine/acp.ts", target: "app/src/engine/acp" }]);
+  });
+
+  it("catches a same-directory reference into engine and a reference to the dev-time bridge", () => {
+    const files = [
+      { path: "app/src/view/derive.ts", source: 'import { probe } from "../engine/probe.ts";\n' },
+      { path: "app/src/ui/turns.ts", source: 'import { PREFIX } from "../../plugins/engine-bridge.ts";\n' },
+    ];
+    const { violations } = checkBoundary(files);
+    expect(violations.map((v) => v.target)).toEqual(["app/src/engine/probe", "app/plugins/engine-bridge"]);
+  });
+
+  it("does not treat a specifier that only appears in prose as an import", () => {
+    const commented = { ...visual, source: '/* the engine/acp.ts layer is upstream of us */\n// from "engine/acp.ts" is fine to mention\n' };
+    expect(checkBoundary([commented]).violations).toEqual([]);
+  });
+
+  it("still allows the assembly root to import the engine layer", () => {
+    const assembly = { path: "app/src/main.ts", source: 'import { translateLine } from "./engine/acp.ts";\n' };
+    const { violations, scanned } = checkBoundary([assembly]);
+    expect(violations).toEqual([]);
+    expect(scanned).toEqual([]);
   });
 });

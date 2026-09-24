@@ -66,6 +66,57 @@ export const collectObservations = (traceText) => {
   return { kinds, methods, lines };
 };
 
+/**
+ * Layer boundary: the visual layer must not reach into the engine layer.
+ *
+ * The UI is the part of this repo that survives an engine swap, and "survives" only means
+ * something while the dependency direction is actually enforced. `ui/**` and `view/**` may
+ * import the internal event contract (`contract/**`) and each other; importing `engine/**`,
+ * the dev-time bridge (`plugins/**`) or the assembly root (`main.ts`) is how that seam
+ * quietly dissolves — and a layer everyone believes is independent is the most expensive
+ * surprise to discover at swap time.
+ */
+const VISUAL_DIRS = ["app/src/ui/", "app/src/view/"];
+const FORBIDDEN_TARGETS = [/^app\/src\/engine\//, /^app\/plugins\//, /^app\/src\/main\.ts$/];
+
+export const extractImports = (source) => {
+  const stripped = source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^[ \t]*\/\/.*$/gm, "");
+  const found = new Set();
+  for (const re of [/(?:^|[\s;})])from\s*["']([^"']+)["']/g, /(?:^|[\s;])import\s*["']([^"']+)["']/g]) {
+    for (const match of stripped.matchAll(re)) found.add(match[1]);
+  }
+  return [...found];
+};
+
+/** Relative specifier → repo-relative path, without the extension. "" for bare packages. */
+export const resolveSpecifier = (fromFile, specifier) => {
+  if (!specifier.startsWith(".")) return "";
+  const segments = `${fromFile}/../${specifier}`.split("/");
+  const out = [];
+  for (const segment of segments) {
+    if (segment === "" || segment === ".") continue;
+    if (segment === "..") out.pop();
+    else out.push(segment);
+  }
+  return out.join("/").replace(/\.tsx?$/, "");
+};
+
+export const checkBoundary = (files) => {
+  const violations = [];
+  const scanned = [];
+  for (const file of files) {
+    if (!VISUAL_DIRS.some((dir) => file.path.startsWith(dir))) continue;
+    scanned.push(file.path);
+    for (const specifier of extractImports(file.source)) {
+      const target = resolveSpecifier(file.path, specifier);
+      if (target !== "" && FORBIDDEN_TARGETS.some((re) => re.test(target))) {
+        violations.push({ file: file.path, specifier, target });
+      }
+    }
+  }
+  return { violations, scanned };
+};
+
 const REF_RE = /<(?:script|link|img|iframe)[^>]*(?:src|href)=["']([^"']+)["']/gi;
 const ID_RE = /\sid="([^"]+)"/g;
 
