@@ -23,9 +23,9 @@ npm run check:all                            # 六道闸，提交前须全绿
 - **引擎链路**：ACP stdio 握手 → `session/new` → `session/prompt` 流式 → `stopReason`。证据：`traces/opencode/*.jsonl`、`spike/probe-app-pipeline.mjs`。
 - **选项**：`configOptions` 只渲染运行时清单；`session/set_config_option` 响应带回完整选项表（`app/src/engine/responses.ts` 有测试）；`mode` 为坞内成对按钮，`model`/`effort` 为右栏下拉——按 `category` 判定，无 id 白名单。
 - **会话恢复能力**：`session/load` 以普通 `session/update` 回放历史，**先流完、响应后到**（规范行为）。证据：`traces/opencode/*-load-redacted.jsonl`、`*-sequencing-redacted.jsonl`（含 `load_timing`）。  
-  **界面尚未调用 `session/load`**（见「半完成」）。
+  **界面 LOAD 已接**（会话列表按钮，见 #2）。
 - **静默判据（规则 7–9）**：`app/src/view/cadence.ts` + `test/cadence.test.ts`（10 例）。基线 = 当前相位间隔中位数、`×8/×25`、样本 &lt;3 拒绝给判据、10 分钟硬上限仅兜底、非运行期间丢弃、换 model 丢样本。界面：大锚点=静默秒数、`[ SIGNAL ]` 面板。
-- **六道闸 + 清单制**：`tsc` · vitest 45 条 · `check:app`（`app/ui-manifest.json` + 字体 38/38 + 渲染层 id）· `check:demo` · `check:traces` · `check:docs`。
+- **六道闸 + 清单制**：`tsc` · vitest 49 条 · `check:app`（`app/ui-manifest.json` + 字体 38/38 + 渲染层 id）· `check:demo` · `check:traces` · `check:docs`。
 - **EVENTS 视图**（`+秒数 / kind / 事实描述`）与 **NEW**（`session/new`，id 变更才清空）。
 - **对话区（验收 #5–#9）**：回合分组、工具行按到达序内嵌、时间戳、安全 markdown、reasoning 真折叠、输入焦点左侧色条、锚点缩号。见 `derive.ts` 统一流、`ui/turns.ts`、`ui/markdown.ts`。  
   **主人目视 2026-09-23「通过」**。舞台标题只取指令首行截断（曾整段进 `h1` 撑爆，已修）。
