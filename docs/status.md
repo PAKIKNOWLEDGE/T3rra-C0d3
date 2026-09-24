@@ -20,7 +20,7 @@ A 的载体 `current-state.md`、B 的载体 `recommendation.md` 已标【仅历
 
 | # | 问题 | 状态 | 备注 |
 | --- | --- | --- | --- |
-| 1 | 中断（HALT）没有 | **代码接入 · 待目视 · 部分未复测** | 2026-09-24：`■ HALT` 钮（坞内，busy 时可用，Esc 同路径）→ `POST /session/{id}/abort` 打到**拥有 turn 的进程**。同进程 abort 实测（独立进程直连）：252ms 内 `session/prompt` 回 `stopReason:"cancelled"`，中断后会话可用（`*-halt-in-process.jsonl`）。跨进程 abort 实测无效（`true` 但流不断，`*-abort-probe.jsonl`）。桥按路径分流：仅 `/abort` → ACP 子进程 `--port`，其余（含 DELETE）→ 懒起 serve。**未做**：分流后桥未端到端复测（真运行 turn 经隧道 abort、DELETE 回归各一次）；见 handover「已知未做」 |
+| 1 | 中断（HALT）没有 | **代码接入 · 待目视 · 架构待重验** | 2026-09-24 契约审计**推翻了本条立论**：旧结论「ACP `session/cancel` 不存在」是**实验方法错误**——它是 notification，旧探针以 request 发出才得 `-32601`（[`engine-contract-audit.md`](./engine-contract-audit.md) F1）。当前走 HTTP `POST /session/{id}/abort` + 桥按路径分流，但 **abort 恒返回 `true`**（假成功无信号，F2），notification cancel 端到端**未验证**。故本条既待目视，也待「直接用 notification cancel vs 保留 HTTP 分流」的架构裁决 |
 | 2 | 会话列表 + 网页端删除 | **已修 · 主人已过** | 整行=LOAD、`×`=删除；不自动建会话；左轨/右栏/空态三处青色主操作新建；删除走引擎 HTTP；存储 `%USERPROFILE%\.local\share\opencode\`（`opencode.db` + `storage/session_diff/`——**diff 是否清掉【未验】**）。**2026-09-23 目视通过**（含 NEW 显眼化） |
 | 2b | 打开即建垃圾会话 | **已修** | handshake 只 `initialize` + `session/list`；首条指令才 `session/new`（queued）；删当前会话不再自动再开 |
 | 2c | BUILD/PLAN 点了像死 | **已修待目视** | 点击即乐观切换 `aria-pressed` 并本地改 `currentValue`，再发 `set_config_option`；缺会话时写 LAST ERROR |
@@ -36,9 +36,28 @@ A 的载体 `current-state.md`、B 的载体 `recommendation.md` 已标【仅历
 | 10 | 审批无界面 | **已实现 · 待主人目视** | 底栏 `[ APPROVAL ]` 条：按引擎 `options` 渲三档按钮并回 `{outcome:{outcome:"selected",optionId}}`（与 trace 同形）。默认配置引擎不问（需 `permission.*="ask"`）——右栏 APPROVAL 空闲时写 `NOT REQUESTED` |
 | 11 | 闸门假阴性 | **已修** | 控件扫描 + `app/ui-manifest.json` 清单制（缺分类 / 陈旧 / 无引用 → 构建失败） |
 
-**计数**：**11/11 有代码**。#2、#5–#9 主人已过；#10 待目视；**#1 代码接入、未经主人目视、分流后未端到端复测**（见 #1 行与 handover「已知未做」）。  
-**优先级**：**#1 两项复测（隧道 abort 真 turn / DELETE 回归）→ #1、#10 目视**；其后按 [`capability-map.md`](./capability-map.md) §3 建议序（cwd 选择器、permission 配置面、多会话、fork/resume/close、审批 diff）。  
+**计数**：**11/11 有代码**。#2、#5–#9 主人已过；#10 待目视；**#1 代码接入，但立论被契约审计推翻，待架构重验 + 待目视**。  
+**优先级（2026-09-24 重排）**：**契约修复优先于一切新功能** —— 先做 [`engine-contract-audit.md`](./engine-contract-audit.md) §5 的 P0-a…P0-d（notification cancel 端到端验证、契约补 `prompt.failed`/`link.down`/`permission.cancelled`、`session/update` 按 `sessionId` 路由、请求 id 分域），再回来做 #1/#10 目视与功能项。  
+**理由**：审计确认此前对引擎的契约知识全部来自抓包反推，**无人读过引擎源码**，且多处反推错了。在不修契约前继续堆功能等于在屎山上加盖。  
 **汇报要求**：「已知未做」必须与「已完成」并列；清单未勾完前，「闸全绿」不作为交付证据。
+
+## 契约审计（2026-09-24，本次最重要的交付）
+
+四路只读子代理并行审计：上游 ACP 源码、上游 HTTP 源码、我方脏假设、官方前端范式。完整结果见 [`engine-contract-audit.md`](./engine-contract-audit.md)。
+
+**必须承认**：项目已是屎山——不是代码量，是**契约知识靠抓包反推且多处反推错了**。审计确认 20 项问题，5 项属「造事实」级：
+
+| 编号 | 一句话 |
+| --- | --- |
+| F1 | `session/cancel` **存在**（notification）；我方「不存在」是实验方法错误 → 整套 HALT 架构可能白建 |
+| F2 | HTTP `abort` 恒 `true`；跨进程必然空操作但界面报成功 |
+| F6 | `session/list` 出错被映射成「没有会话」；`load` 失败被伪造 `[ READY ]` |
+| F7 | 契约缺 `prompt.failed` / `link.down` / `permission.cancelled` → 卡 RUNNING、假 LINK OK、审批挂死 |
+| F11 | `session/list` 字段映射标【实测】但**仓内 0 条报文支持** |
+
+另有：请求 id 与引擎 id 同域可吞审批（F5）、`session/update` 忽略 `sessionId` 致事实串台（F4）、工具行说旧话+造值（F8）、批准 edit 后引擎反向调 `fs/write_text_file` 我方未实现（F9）、`--version` 通过即当可用（F18）、jsdom 测试违反规则 19（F17）、验证体系六处盲区（F16）。
+
+**同时列出 12 项做对的部分**（纯函数分层、不造数字、未知报文计数、审批回包形状、壳只搬字节等），见审计 §3——不是全盘否定，是**契约知识必须补课**。
 
 ### 能力全图（2026-09-23，子代理盘点入库）
 

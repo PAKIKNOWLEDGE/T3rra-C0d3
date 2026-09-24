@@ -1,7 +1,8 @@
 # 能力全图（coding-agent 前端对照）
 
-日期：**2026-09-23**。来源：对本仓 `app/` + `docs/` + `traces/` 的只读盘点（子代理），主总线整理入库。  
-**用途**：空上下文接手时，除了 [`status.md`](./status.md) 验收账，还能一眼看到「完整 coding agent 应有什么 / 本仓有没有」。
+**日期**：**2026-09-24**。来源：对本仓 `app/` + `docs/` + `traces/` 的只读盘点（子代理），主总线整理入库。  
+**用途**：空上下文接手时，除了 [`status.md`](./status.md) 验收账，还能一眼看到「完整 coding agent 应有什么 / 本仓有没有」。  
+**契约正确性**另见 [`engine-contract-audit.md`](./engine-contract-audit.md)——本文件回答「功能有没有」，审计回答「对引擎的假设对不对」。**两者与 status 冲突时，以 status 为准；审计可推翻本文件的证据等级标注。**
 
 **证据等级**见 [`README.md`](./README.md)：【实测】/【源码】/【文档】/【未验】。  
 **状态**：`present` = 有；`partial` = 半截；`missing` = 缺；`N/A` = 本产品规则上不接。
@@ -15,7 +16,7 @@
 | 问 | 答 |
 | --- | --- |
 | 项目是什么 | opencode 的桌面控制台前端（ark 族暗色），产品代码 `app/` |
-| 引擎怎么接 | ACP stdio（桥）+ 通用 HTTP 透传 `/__t3/http`（按路径分流：`/abort` → ACP 子进程自带端口，其余 → 懒起 `opencode serve`；分流状态未复测） |
+| 引擎怎么接 | ACP stdio（桥）+ 通用 HTTP 透传 `/__t3/http`（按路径分流：`/abort` → ACP 子进程自带端口，其余 → 懒起 `opencode serve`；分流状态未复测）。**契约假设的正确性另见 [`engine-contract-audit.md`](./engine-contract-audit.md)** |
 | 工作目录 | **固定** `app/.sandbox`——**没有选真实项目根的 UI**（已知硬伤） |
 | 项目配置 | **app 内无入口**读写 `opencode.json` / `permission.*`（审批为何不问无处解释） |
 | 验收账 | 11 条：#1–#11 全部有代码；**#10 待主人目视；#1 待复测与目视**（见 §2 C） |
@@ -48,8 +49,8 @@ HTTP 通道已接两单：**DELETE 与 abort**——diff、revert、pty、file�
 | 能力 | 状态 | 证据 | 依赖 | 备注 |
 | --- | --- | --- | --- | --- |
 | 列表 / 新建 / 加载 / 删除 | **present** | 验收 #2 主人已过 | ACP + HTTP DELETE | 整行 LOAD、`×` 删 |
-| 重命名 | **missing** | 无代码 | 【未验】引擎端点 | title 只读 |
-| fork / resume / close | **missing** | 【实测】ACP `sessionCapabilities` 已声明 | 纯契约接线 | 能力在引擎、产品零消费 |
+| 重命名 | **missing** | 无代码；HTTP `PATCH /session/:id` 可改 title【源码】 | 契约/HTTP | title 只读 |
+| fork / resume / close | **missing** | 【源码】上游 `acp/service.ts:295-407` **已实现**；capabilities 已声明 | 纯契约接线 | **回放语义各异**：load 全量 / resume 不回放 / fork 回放 20 条。见 [`engine-contract-audit.md`](./engine-contract-audit.md) F12 |
 | archive | **missing**/【未验】 | 未查到 | — | 引擎面未确认 |
 | 元数据 title/cwd/updatedAt | **present** | contract `SessionSummary` | ACP list | 四字段 |
 | 消息数/轮数 | **N/A** | 【实测】list 无消息数；规则禁止造数 | — | — |
@@ -59,7 +60,7 @@ HTTP 通道已接两单：**DELETE 与 abort**——diff、revert、pty、file�
 | 能力 | 状态 | 证据 | 依赖 | 备注 |
 | --- | --- | --- | --- | --- |
 | 流式 / 工具行 / markdown / reasoning 折叠 / EVENTS / 静默 | **present** | 验收 #3 #5–#9 主人已过 | — | — |
-| 中途取消 HALT | **代码已接入 · 未端到端复测、待目视**（#1，2026-09-24） | 【实测】ACP cancel `-32601`；同进程 `POST /session/{id}/abort` → `stopReason:"cancelled"`（~252ms）；跨进程 abort 无效 | `*-halt-in-process.jsonl`、`*-abort-probe.jsonl` | 坞内 `■ HALT` + Esc；桥**仅把 `/abort` 分流到 ACP 子进程端口**（该分流改动未复跑探针） |
+| 中途取消 HALT | **代码已接入 · 未端到端复测、待目视**（#1，2026-09-24）；**架构去留待 notification cancel 验证** | 【实测】ACP cancel **request 形态** `-32601`；**【源码】ACP `session/cancel` 是 notification 且已实现**（旧「不存在」结论作废）；同进程 HTTP abort `stopReason:"cancelled"`（三次 run 两次不干净）；跨进程 abort 恒 `true` 空操作 | `*-halt-in-process.jsonl`、`*-abort-probe.jsonl`、`*-cancel-probe.jsonl` | 见 [`engine-contract-audit.md`](./engine-contract-audit.md) F1/F2 |
 | 重试 / 编辑末条 / fork 对话 | **missing** | 无代码 | 引擎机制多【未验】 | — |
 | compact / 清上下文 | **missing** | `available_commands_update` 故意不映射（rule 5） | 【未验】+ 契约讨论 | — |
 | 工具结果体（读了什么/grep 到什么） | **missing** | `tool_call` 只映射 title/status | **契约变更**（规则 23） | 目前只知「调了什么」 |
@@ -78,7 +79,7 @@ HTTP 通道已接两单：**DELETE 与 abort**——diff、revert、pty、file�
 
 | 能力 | 状态 | 证据 | 依赖 | 备注 |
 | --- | --- | --- | --- | --- |
-| 三档审批 UI | **partial**（#10 待目视） | 回包与 trace 同形【实测】 | 需 `permission.*=ask` | 默认永不触发 |
+| 三档审批 UI | **partial**（#10 待目视） | 回包与 trace 同形【实测】 | 需 `permission.*=ask` | 默认永不触发；`optionId` 字面量 `once/always/reject`；`cancelled`→折成 reject；批准后引擎会反向调 `fs/write_text_file`（我方未实现）；权限按会话串行。见审计 F9/F10 |
 | 审批时 diff 预览 | **missing** | HTTP `session.diff` 存在【文档】 | HTTP + UI | 盲签风险 |
 | allow_always 语义 | **【未验】** | adapters §六.1 | 探针 | 点「始终允许」前须知 |
 | 「当前配置不会问你」 | **missing** | adapters §六.2 | 读配置 | 现只写 `NOT REQUESTED` |
@@ -98,7 +99,7 @@ HTTP 通道已接两单：**DELETE 与 abort**——diff、revert、pty、file�
 | 能力 | 状态 | 证据 | 依赖 | 备注 |
 | --- | --- | --- | --- | --- |
 | ACP stdio | **present** | bridge + transport | — | 规则 4：唯一字节通道 |
-| HTTP 透传 | **partial** | `transport.http`；桥按路径分流：`/abort` → ACP 子进程端口，其余 → 懒起 serve | — | DELETE（经 serve）+ abort（经 ACP 端口）**分流后未复测**；diff 等未接 |
+| HTTP 透传 | **partial** | `transport.http`；桥按路径分流：`/abort` → ACP 子进程端口，其余 → 懒起 serve | — | DELETE + abort **分流后未复测**；**abort/DELETE 均未带 `directory`/`workspace`**；`abort` 恒返回 `true`（假成功无信号）。见审计 F2/F3 |
 | 断链 / 重启 / 链路态 | **partial**/present | LINK OK/DOWN；RESTART | — | 退出禁输入；无自动重开会话 |
 | Tauri 外壳 | **missing**（P2） | status 待补清单 | Tauri 工程 | 替换 bridge 时 transport 不变 |
 

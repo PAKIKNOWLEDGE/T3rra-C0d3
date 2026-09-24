@@ -1,6 +1,6 @@
 # 交接说明
 
-面向接手本仓库的开发者或代理。阅读顺序：本文件 → [`status.md`](./status.md)（现行真相、验收账）→ [`capability-map.md`](./capability-map.md)（能力全图与缺口）→ [`../AGENTS.md`](../AGENTS.md)（结构与通用规矩）。
+面向接手本仓库的开发者或代理。阅读顺序：本文件 → [`status.md`](./status.md)（现行真相、验收账）→ [`engine-contract-audit.md`](./engine-contract-audit.md)（**对引擎的假设哪些是错的**）→ [`capability-map.md`](./capability-map.md)（能力全图与缺口）→ [`../AGENTS.md`](../AGENTS.md)（结构与通用规矩）。
 
 ## 一、如何运行
 
@@ -60,7 +60,19 @@ npm run check:all                            # 六道闸，提交前须全绿
 | **无项目/cwd 入口** | 一切在 `app/.sandbox`；桥 `/spawn` 可收 cwd，UI 未暴露 |
 | **无项目配置入口** | app 内找不到/改不了 `opencode.json` / `permission.*` → 审批默认不问无 UI 解释 |
 | **无 diff/文件/终端/图片等工作面** | HTTP 通道可搭，产品侧未接（现仅 DELETE） |
-| 多会话并发 | 单 transport、单打开会话 |
+| 多会话并发 | 单 transport、单打开会话；且 `session/update` 的 `params.sessionId` **我方完全忽略**（审计 F4）→ 事实会串台 |
+| **契约知识欠账** | 全部对引擎的假设来自抓包反推，**无人读过引擎源码**。2026-09-24 四路审计确认 20 项问题（5 项造事实级），见 [`engine-contract-audit.md`](./engine-contract-audit.md) |
+
+### 接手第一件事（不是功能，是契约补课）
+
+按 [`engine-contract-audit.md`](./engine-contract-audit.md) §5 的 P0-a…P0-d 顺序：
+
+1. **P0-a** 新探针：不带 id 的 `session/cancel` notification，端到端验证能否掐断在途 turn。这条决定整套双进程分流是留是删。  
+2. **P0-b** 契约补 `prompt.failed` / `link.down` / `permission.cancelled`；**错误响应不再当成功**。  
+3. **P0-c** 所有 `session/update` 按 `params.sessionId` 路由。  
+4. **P0-d** 请求 id 与引擎请求 id 分域；RESTART 清 pending。
+
+**在不修契约前继续堆功能 = 在屎山上加盖。**
 
 ### 开放项（未排期）
 

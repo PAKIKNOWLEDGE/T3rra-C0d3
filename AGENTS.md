@@ -49,11 +49,15 @@
 1. 本文件  
 2. [`docs/status.md`](./docs/status.md) — 现行真相、验收清单、已拍板优先级  
 3. [`docs/handover.md`](./docs/handover.md) — 运行方式、完成度三分、规矩与证据地图  
-4. [`docs/capability-map.md`](./docs/capability-map.md) — coding-agent 能力全图（有/缺/结构空洞）  
-5. [`docs/visual-guide.md`](./docs/visual-guide.md) — 做视觉前读  
-6. [`docs/design-contract.md`](./docs/design-contract.md)、[`docs/design-critique.md`](./docs/design-critique.md)  
-7. [`docs/recommendation.md`](./docs/recommendation.md)、[`docs/adapters/opencode-acp.md`](./docs/adapters/opencode-acp.md)  
-8. 旧仓 `NIX\t3rra-core` **只读**：需要规则原文时读其 `AGENTS.md`、`docs/event-model.md`、`docs/adapters/acp.md`
+4. [`docs/engine-contract-audit.md`](./docs/engine-contract-audit.md) — **对引擎的假设哪些是错的**（接手必读，先于任何新功能）  
+5. [`docs/capability-map.md`](./docs/capability-map.md) — coding-agent 能力全图（有/缺/结构空洞）  
+6. [`docs/visual-guide.md`](./docs/visual-guide.md) — 做视觉前读  
+7. [`docs/design-contract.md`](./docs/design-contract.md)、[`docs/design-critique.md`](./docs/design-critique.md)  
+8. [`docs/recommendation.md`](./docs/recommendation.md)、[`docs/adapters/opencode-acp.md`](./docs/adapters/opencode-acp.md)  
+9. 旧仓 `NIX\t3rra-core` **只读**：需要规则原文时读其 `AGENTS.md`、`docs/event-model.md`、`docs/adapters/acp.md`
+
+**契约优先规矩（2026-09-24）**：本项目所有对 opencode 的接口假设**必须有源码或报文证据**，不得靠抓包反推。  
+上游源码本地参考：`C:\DEV\develop\opencode`（只读）。新增/修改引擎交互前，先查该源码并在 `docs/adapters/opencode-acp.md` 登记 path:line 证据。
 
 ## 五、开工前硬规矩（范式，不许绕）
 
