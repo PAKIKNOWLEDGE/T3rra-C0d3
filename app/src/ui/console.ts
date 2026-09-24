@@ -51,6 +51,7 @@ export interface ConsoleHandles {
   onOptionChange(handler: (optionId: string, value: string) => void): void;
   onViewChange(handler: (view: "process" | "events") => void): void;
   onNewSession(handler: () => void): void;
+  onSessionCreate(handler: () => void): void;
   onSessionsRefresh(handler: () => void): void;
   onSessionLoad(handler: (sessionId: string, cwd: string) => void): void;
   onSessionDelete(handler: (sessionId: string) => void): void;
@@ -119,6 +120,7 @@ export const mountConsole = (): ConsoleHandles => {
   let optionHandler: (optionId: string, value: string) => void = () => {};
   let sessionLoadHandler: (sessionId: string, cwd: string) => void = () => {};
   let sessionDeleteHandler: (sessionId: string) => void = () => {};
+  let sessionCreateHandler: () => void = () => {};
   let optionSignature = "";
   let sessionSignature = "";
   let facts: SessionFacts = {};
@@ -322,10 +324,17 @@ export const mountConsole = (): ConsoleHandles => {
 
     sessionsList.replaceChildren();
     if (view.sessions.length === 0) {
+      // Empty list must offer the recovery action here — a dead-end panel is a dead control.
       const empty = document.createElement("div");
       empty.className = "empty";
-      empty.textContent = "NO SESSIONS REPORTED";
-      sessionsList.append(empty);
+      empty.textContent = "NO SESSIONS · CREATE ONE";
+      const create = document.createElement("button");
+      create.type = "button";
+      create.className = "micro-btn";
+      create.id = "sessionsCreate";
+      create.textContent = "＋ CREATE SESSION";
+      create.addEventListener("click", () => sessionCreateHandler());
+      sessionsList.append(empty, create);
       return;
     }
     for (const item of view.sessions) {
@@ -504,6 +513,9 @@ export const mountConsole = (): ConsoleHandles => {
     },
     onNewSession(handler): void {
       newSessionButton.addEventListener("click", handler);
+    },
+    onSessionCreate(handler): void {
+      sessionCreateHandler = handler;
     },
     onSessionsRefresh(handler): void {
       sessionsRefresh.addEventListener("click", handler);

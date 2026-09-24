@@ -54,13 +54,22 @@
 6. [`docs/recommendation.md`](./docs/recommendation.md)、[`docs/adapters/opencode-acp.md`](./docs/adapters/opencode-acp.md)  
 7. 旧仓 `NIX\t3rra-core` **只读**：需要规则原文时读其 `AGENTS.md`、`docs/event-model.md`、`docs/adapters/acp.md`
 
-## 五、开工前四条硬规矩
+## 五、开工前硬规矩（范式，不许绕）
 
 1. **「已知未做 / 只做了一半」必须与「已完成」并列出现在汇报里。**  
    历史问题：死按键被写成 `<div>`，落在控件扫描范围外，再以「无悬空控件」作为交付证据。
 2. **元素清单制**：`app/ui-manifest.json` 中每个可见/可点元素必须表态（`wired` 或 `static: 理由`）。  
-   缺分类、清单陈旧、声称 wired 但代码无引用 → `npm run check:app` 失败。  
-   此机制保证「存在必须被表态」，不保证「有用」——有用与否由仓库主人操作判断。
-3. **无头浏览器禁用**；不得声称看过渲染结果；交付界面 = 可打开路径 + 3–5 条「看什么」。
-4. **不要在他人工作树上整文件回滚**（曾有 `git checkout --` 覆盖他人未提交改动的事故）。  
+   缺分类、清单陈旧、声称 wired 但代码无引用 → `npm run check:app` 失败。
+3. **`wired` ≠ 可用（2026-09-23 范式）**  
+   闸只证明「有引用」。控件诚实的定义是：**点击必有可观测结果——要么动作，要么可见错误**。  
+   **禁止**在用户动作路径里静默 `return`（`if (…) return;` 不写 lastError/phase）。  
+   这是 `＋ NEW` 在 6190ad4 后再次变成死键的直接原因（`facts.binary === undefined` 时无声退出）。  
+   `check:app` 已禁止该 guard 形状。前置条件失败必须 `patch({ lastError, phaseNote })`。
+4. **空态必须给出恢复动作**  
+   清空列表 / 无会话 / 无引擎时，空态里必须有可点的下一步（如 `＋ CREATE SESSION`），  
+   **禁止死胡同面板**——「没有入口能新建」是状态机缺陷，不是用户没看懂。
+5. **状态合并，禁止整对象替换**  
+   `facts = { … }` 整对象赋值会丢掉 `binary`/`cwd`，曾导致 NEW 静默失效。只允许 `patch` 合并。
+6. **无头浏览器禁用**；不得声称看过渲染结果；交付界面 = 可打开路径 + 3–5 条「看什么」。
+7. **不要在他人工作树上整文件回滚**（曾有 `git checkout --` 覆盖他人未提交改动的事故）。  
    回滚自己的改动前先看 `git status`，或先 `git stash` / 复制备份。

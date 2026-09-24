@@ -4,6 +4,10 @@
     "`wired` = the module script drives it. `static` = it is not a control, and this is why.",
     "check:app fails when an element is unclassified, when a manifest entry names something the",
     "shell no longer has, or when a `wired` claim has no reference in app/**/*.ts.",
+    "PARADIGM (2026-09-23): `wired` only proves a reference exists. A control is honest only if",
+    "clicking it has an observable outcome — action, or a visible error. Silent `return` on a",
+    "failed precondition is a dead control (＋ NEW after 6190ad4). check:app bans that guard shape.",
+    "Empty lists must offer the recovery action in the empty state itself (see sessionsList).",
     "Why this file exists: three rail items were written as <div>s, so the control scan never saw",
     "them, and they stayed dead while every gate reported green. A gap can hide by simply not",
     "being counted; this file makes not-counting a build failure."

@@ -38,7 +38,18 @@ A 的载体 `current-state.md`、B 的载体 `recommendation.md` 已标【仅历
 **优先级**：**#2 待验收** → **#10 审批** → **#1 中断**（HTTP 通道已具备，可共用 `POST /abort`）。  
 **汇报要求**：「已知未做」必须与「已完成」并列；清单未勾完前，「闸全绿」不作为交付证据。
 
-## 开放项（本轮观察，未排期）
+## 范式更新（2026-09-23，死键二次回潮后）
+
+**审计**：`＋ NEW` 由上一任 `6190ad4`（Stop the dead keys）引入并自称已修死键；本会话沿用同一静默 guard（`facts.binary === undefined` 时 `return`），清空会话后再次变成死键。**`wired` ≠ 可用。**
+
+| 范式 | 内容 | 落点 |
+| --- | --- | --- |
+| 控件诚实 | 点击必有可观测结果：动作或可见错误；禁止静默 `return` | `AGENTS.md` §五.3；`check:app` 禁 `if (…) return;` |
+| 空态不死胡同 | 清空列表/无会话/无引擎必须给出恢复动作 | `sessionsList` 空态 `＋ CREATE SESSION` |
+| 状态合并 | 禁止 `facts = {…}` 整对象替换（会丢 binary/cwd） | `main.ts` restart 只 `patch` |
+| 失败可恢复 | `session/new`/`load` 失败必须恢复输入框 | `handleLine` error 路径 |
+
+**事故**：仓库主人清空全部会话后无入口新建；`＋ NEW` 与「直接输入」均静默失效。
 
 ### 网页端粘贴图片（可能不必先上 Tauri）
 

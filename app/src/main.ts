@@ -102,6 +102,26 @@ const shortTopic = (text: string): string => {
   return line.length <= limit ? line : `${line.slice(0, limit - 1)}…`;
 };
 
+/**
+ * Gate for every user action. Returns false and **says so on screen** when the engine
+ * is not ready — never a bare return. A silent early-return is a dead control by
+ * another name (the 6190ad4 class of bug).
+ */
+const engineReady = (action: string): boolean => {
+  const binary = facts.binary;
+  if (binary === undefined || binary === "NOT FOUND") {
+    patch({
+      lastError: `${action} blocked: engine not ready`,
+      phase: "[ NO ENGINE ]",
+      phaseNote: "PRESS RESTART ⟲ OR CHECK T3RRA_ENGINE_BIN",
+    });
+    ui.setCommandEnabled(true);
+    ui.setPlaceholder("ENGINE NOT READY · PRESS RESTART ⟲");
+    return false;
+  }
+  return true;
+};
+
 const apply = (events: readonly AgentEvent[]): void => {
   logEvents(events);
   const now = Date.now();
@@ -217,6 +237,15 @@ const handleLine = (line: string): void => {
     // not JSON — the adapter counts it as unmapped, which is the honest outcome
   }
   if (id !== undefined && method !== undefined && parsed !== undefined && handleResponse(id, method, parsed.result)) return;
+  // User actions that failed must leave the dock usable and say why (no silent dead-end).
+  if (id !== undefined && method !== undefined && parsed?.error !== undefined) {
+    if (method === "session/new" || method === "session/load") {
+      queuedPrompt = undefined;
+      pendingLoadId = undefined;
+      ui.setCommandEnabled(true);
+      ui.setPlaceholder("OPEN FAILED · + NEW OR TYPE TO RETRY");
+    }
+  }
   apply(translateLine(line).events);
 
 };
@@ -260,20 +289,32 @@ ui.onViewChange((next) => {
   if (next === "events") ui.renderEvents(eventLog);
 });
 
-/** `＋ NEW`: a fresh session in the same engine. The response handler takes it from there. */
-ui.onNewSession(() => {
-  if (facts.binary === undefined) return;
-  patch({ phase: "[ OPENING SESSION ]", phaseNote: "NEW SESSION REQUESTED", busy: false });
+/** `＋ NEW` and the empty-list CREATE: a fresh session in the same engine. */
+const createSession = (why: string): void => {
+  if (!engineReady(why)) return;
+  queuedPrompt = undefined;
+  pendingLoadId = undefined;
+  patch({ phase: "[ OPENING SESSION ]", phaseNote: `${why} · session/new`, busy: false, topic: undefined });
   ui.setView("process");
-  send("session/new", { cwd: facts.cwd ?? ".", mcpServers: [] });
+  ui.setCommandEnabled(true);
+  ui.setPlaceholder("AWAITING NEW SESSION");
+  send("session/new", { cwd: facts.cwd === undefined || facts.cwd === "NOT STATED" ? "." : facts.cwd, mcpServers: [] });
+};
+
+ui.onNewSession(() => {
+  createSession("NEW SESSION");
+});
+ui.onSessionCreate(() => {
+  createSession("CREATE SESSION");
 });
 
 ui.onSessionsRefresh(() => {
+  if (!engineReady("LIST")) return;
   refreshSessions();
 });
 
 ui.onSessionLoad((sessionId, cwd) => {
-  if (facts.binary === undefined) return;
+  if (!engineReady("LOAD")) return;
   pendingLoadId = sessionId;
   // Move the current-session rail immediately so the marker does not wait on the response.
   if (view.sessionId !== sessionId) {
@@ -293,13 +334,13 @@ ui.onSessionLoad((sessionId, cwd) => {
   ui.setPlaceholder("REPLAYING HISTORY");
   send("session/load", {
     sessionId,
-    cwd: cwd === "" ? facts.cwd ?? "." : cwd,
+    cwd: cwd === "" || cwd === "NOT STATED" ? facts.cwd === undefined || facts.cwd === "NOT STATED" ? "." : facts.cwd : cwd,
     mcpServers: [],
   });
 });
 
 ui.onSessionDelete((sessionId) => {
-  if (facts.binary === undefined) return;
+  if (!engineReady("DELETE")) return;
   patch({ phase: "[ DELETING ]", phaseNote: `DELETE session ${sessionId.slice(0, 12)}…` });
   void deleteSession((method, path, body) => transport.http(method, path, body), sessionId)
     .then((result) => {
@@ -332,12 +373,12 @@ ui.onSessionDelete((sessionId) => {
 
 ui.onSubmit((text) => {
   if (view.sessionId === undefined) {
-    if (facts.binary === undefined) return;
+    if (!engineReady("TYPE TO OPEN")) return;
     // No session yet: create one, then send this instruction when the open lands.
     queuedPrompt = text;
     ui.setPlaceholder("OPENING SESSION FOR INSTRUCTION");
     patch({ phase: "[ OPENING SESSION ]", phaseNote: "NEW SESSION FOR FIRST INSTRUCTION", busy: false });
-    send("session/new", { cwd: facts.cwd ?? ".", mcpServers: [] });
+    send("session/new", { cwd: facts.cwd === undefined || facts.cwd === "NOT STATED" ? "." : facts.cwd, mcpServers: [] });
     return;
   }
   // The operator's own line is a fact of the operator, not a claim about the runtime.
@@ -351,11 +392,21 @@ ui.onSubmit((text) => {
 });
 
 ui.onRestart(() => {
+  const binary = facts.binary;
+  const cwd = facts.cwd;
   view = emptyView();
-  facts = { phase: "[ RESTARTING ]", phaseNote: "KILLING THE ENGINE PROCESS" };
-  patch({ busy: false, sessionId: undefined, topic: undefined });
-  ui.setCommandEnabled(false);
-  ui.setPlaceholder("RESTARTING ENGINE");
+  // Merge, never replace — replacing dropped `binary` and left + NEW silently dead.
+  patch({
+    phase: "[ RESTARTING ]",
+    phaseNote: "KILLING THE ENGINE PROCESS",
+    busy: false,
+    sessionId: undefined,
+    topic: undefined,
+    binary,
+    cwd,
+  });
+  ui.setCommandEnabled(true);
+  ui.setPlaceholder("RESTARTING ENGINE · PRESS + NEW AFTER READY");
   void transport
     .kill()
     .then(handshake)
@@ -381,9 +432,10 @@ ui.onOptionChange((optionId, value) => {
 // The clock is the only thing allowed to change the anchor while nothing is streaming.
 let elapsed = 0;
 setInterval(() => {
-  if (facts.sessionId === undefined) return;
-  elapsed += 1;
-  patch({ elapsedSeconds: elapsed, ...silenceNow() });
+  if (facts.sessionId !== undefined) {
+    elapsed += 1;
+    patch({ elapsedSeconds: elapsed, ...silenceNow() });
+  }
 }, 1000);
 
 ui.render(view);

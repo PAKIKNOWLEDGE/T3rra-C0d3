@@ -158,6 +158,16 @@ if (!existsSync(FONT_CSS)) {
   notes.push(`${targets.length - missing.length}/${targets.length} font files present`);
 }
 
+// Silent early-return in a user-action path is a dead control by another name: the
+// handler is "wired" (gate green) but the click does nothing and says nothing. That is
+// exactly how + NEW went dead after 6190ad4. Require an explicit report on every guard.
+const SILENT_GUARD = /if \([^)\n]+=== undefined\) return;/g;
+for (const match of tsText.matchAll(SILENT_GUARD)) {
+  failures.push(
+    `silent guard "${match[0].trim()}" in app/**/*.ts — a user action must report why it did nothing (patch lastError/phase), never bare-return`,
+  );
+}
+
 console.log(`${SHELL}: ${controls.length} control(s), ${wired} wired, ${RUNTIME_VOCABULARY.length} forbidden words checked`);
 if (notes.length > 0) console.log(`fonts: ${notes.join(", ")}`);
 if (failures.length === 0) {
