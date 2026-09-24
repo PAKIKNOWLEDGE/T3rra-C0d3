@@ -3,11 +3,17 @@
  * the bridge only forwards method + path + body as bytes (rule 4 — shell does not learn
  * event vocabulary, but a path string is not an event kind).
  *
- * Sources: traces/opencode/openapi-1.17.18.json — `DELETE /session/{sessionID}` 【实测文档导出】;
- * `POST /session/{sessionID}/abort` 【实测】via spike/probe-halt-in-process.mjs —
- * the ACP child serves this API on its own `--port`, and only there does an abort stop the
- * turn (cross-process abort on a separate `opencode serve` returns `true` but is a no-op;
- * traces/opencode/*-abort-probe.jsonl and *-halt-in-process.jsonl).
+ * Sources: traces/opencode/openapi-1.17.18.json — `DELETE /session/{sessionID}` 【实测文档导出】.
+ *
+ * `POST /session/{id}/abort` is deliberately **not** here any more. It used to back HALT, which
+ * forced the bridge to spawn the ACP child on a known port and split traffic by path shape —
+ * because an earlier probe wrongly concluded ACP has no interrupt (it sent `session/cancel` as
+ * a request). HALT now goes out as a stdio `session/cancel` notification instead
+ * (docs/engine-contract-audit.md F1, measured in
+ * traces/opencode/opencode-acp-2026-09-24T10-34-39-594Z-cancel-notification.jsonl).
+ * Keeping abort would also keep a known false-success channel: it answers `true` unconditionally
+ * and does not check that the session exists (F2, measured in
+ * traces/opencode/opencode-acp-2026-09-24T04-37-51-820Z-bridge-route.jsonl).
  */
 
 export interface HttpResult {
@@ -22,9 +28,3 @@ export const deleteSessionPath = (sessionId: string): string => `/session/${enco
 
 export const deleteSession = async (channel: HttpChannel, sessionId: string): Promise<HttpResult> =>
   channel("DELETE", deleteSessionPath(sessionId));
-
-/** Abort the running turn. sessionId must match `^ses` (OpenAPI pattern). */
-export const abortSessionPath = (sessionId: string): string => `/session/${encodeURIComponent(sessionId)}/abort`;
-
-export const abortSession = async (channel: HttpChannel, sessionId: string): Promise<HttpResult> =>
-  channel("POST", abortSessionPath(sessionId));

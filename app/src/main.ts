@@ -14,7 +14,8 @@
 
 import { translateLine } from "./engine/acp.ts";
 import { mapResponse } from "./engine/responses.ts";
-import { abortSession, deleteSession } from "./engine/engine-http.ts";
+import { deleteSession } from "./engine/engine-http.ts";
+import { cancelNotificationLine } from "./engine/cancel.ts";
 import type { AgentEvent } from "./contract/events.ts";
 import { createBridgeTransport, type Transport } from "./engine/transport.ts";
 import { emptyView, reduceView, type ConsoleView } from "./view/derive.ts";
@@ -446,16 +447,31 @@ ui.onRestart(() => {
 });
 
 /**
- * HALT = `POST /session/{id}/abort` on the HTTP face of the process that owns the turn.
- * Measured (traces/opencode/*-halt-in-process.jsonl): the engine answers the in-flight
- * `session/prompt` with stopReason "cancelled" within ~250ms. The end of the turn itself
- * arrives over the normal stream (prompt.ended) — HALT never claims the stop on its own.
- * Cross-process abort (a separate `opencode serve`) returns `true` but does nothing
- * (traces/opencode/*-abort-probe.jsonl) — hence the bridge routes THIS path to the ACP
- * child's own port. Other HTTP paths (DELETE etc.) intentionally keep the lazy-serve route
- * the owner accepted for #2; after that routing split the bridge has not been re-tested
- * end-to-end (see docs/status.md 验收 #1).
+ * HALT = a `session/cancel` **notification** on stdio — no `id`, no HTTP.
+ *
+ * Why not the previous design (`POST /session/{id}/abort` on the ACP child's own port, with
+ * the bridge splitting traffic by path shape): that whole routing split existed only because
+ * an earlier probe concluded ACP has no interrupt. The probe was wrong — it sent
+ * `session/cancel` as a *request*, so the SDK's notification-only dispatch answered `-32601`
+ * (docs/engine-contract-audit.md F1). Measured end to end instead:
+ * traces/opencode/opencode-acp-2026-09-24T10-34-39-594Z-cancel-notification.jsonl — 53ms
+ * after the id-less notification, the in-flight `session/prompt` answered
+ * `stopReason:"cancelled"` 【实测】.
+ *
+ * What the UI may claim: a notification carries no acknowledgement, so "sent" is all HALT can
+ * ever assert. The turn ends through the ordinary stream (`prompt.ended`), and that is the
+ * only authority for "stopped". If nothing arrives within the window, say so — do not hold
+ * `[ HALTING ]` open forever, which would be the same false success the HTTP `abort` returned
+ * (an unconditional `true`, F2).
  */
+const CANCEL_CONFIRM_WINDOW_MS = 10_000;
+
+/** The request id of the turn currently awaiting its `session/prompt` response, if any. */
+const pendingPromptId = (): number | undefined => {
+  for (const [id, entry] of pending) if (entry.method === "session/prompt") return id;
+  return undefined;
+};
+
 ui.onHalt(() => {
   if (!engineReady("HALT")) return;
   const sessionId = view.sessionId;
@@ -463,23 +479,24 @@ ui.onHalt(() => {
     patch({ lastError: "HALT needs a running turn — none is in flight", phaseNote: "NOTHING RUNNING · HALT INERT" });
     return;
   }
-  patch({ phase: "[ HALTING ]", phaseNote: `HALT SENT · POST /session/${sessionId.slice(0, 12)}…/abort` });
-  void abortSession((method, path, body) => transport.http(method, path, body), sessionId)
-    .then((result) => {
-      if (result.status >= 400) {
-        patch({
-          lastError: `halt failed: HTTP ${result.status} ${result.text.slice(0, 80)}`.slice(0, 160),
-          phase: "[ RUNNING ]",
-          phaseNote: "HALT FAILED · RETRY OR RESTART ⟲",
-        });
-        return;
-      }
-      // Accepted. The turn ends through the ordinary stream; do not fake the end here.
-      patch({ phaseNote: "HALT SENT · AWAITING TURN END" });
-    })
+  const turnId = pendingPromptId();
+  patch({ phase: "[ HALTING ]", phaseNote: `CANCEL SENT · SESSION/${sessionId.slice(0, 12)}…` });
+  void transport.write(cancelNotificationLine(sessionId))
     .catch((error: unknown) => {
-      patch({ lastError: String(error).slice(0, 160), phase: "[ RUNNING ]", phaseNote: "HALT FAILED · RETRY OR RESTART ⟲" });
+      patch({ lastError: String(error).slice(0, 160), phase: "[ RUNNING ]", phaseNote: "CANCEL NOT SENT · RETRY OR RESTART ⟲" });
     });
+
+  // Watchdog: if the turn we asked to cancel is still unanswered when the window closes, the
+  // interrupt did not take. Report it; `prompt.ended` clears the suspicion when it does land.
+  setTimeout(() => {
+    const unconfirmed = facts.busy === true && pendingPromptId() === turnId;
+    if (unconfirmed) {
+      patch({
+        lastError: `no turn end within ${CANCEL_CONFIRM_WINDOW_MS / 1000}s after session/cancel — engine may still be running`,
+        phaseNote: "CANCEL UNCONFIRMED · HALT AGAIN OR RESTART ⟲",
+      });
+    }
+  }, CANCEL_CONFIRM_WINDOW_MS);
 });
 
 ui.onOptionChange((optionId, value) => {
