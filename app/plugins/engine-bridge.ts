@@ -30,6 +30,8 @@ const SERVE_READY_TIMEOUT_MS = 20_000;
 
 interface Client {
   child: ChildProcessWithoutNullStreams | undefined;
+  /** Port passed to `opencode acp --port`; that process serves the same HTTP API (rule 4: a port is not event vocabulary). */
+  acpPort: number | undefined;
   serve: ChildProcess | undefined;
   servePort: number | undefined;
   serveReady: Promise<number> | undefined;
@@ -103,7 +105,7 @@ export const engineBridge = (): Plugin => {
   const clientFor = (id: string): Client => {
     const existing = clients.get(id);
     if (existing !== undefined) return existing;
-    const created: Client = { child: undefined, serve: undefined, servePort: undefined, serveReady: undefined, streams: new Set(), reap: undefined };
+    const created: Client = { child: undefined, acpPort: undefined, serve: undefined, servePort: undefined, serveReady: undefined, streams: new Set(), reap: undefined };
     clients.set(id, created);
     return created;
   };
@@ -191,6 +193,7 @@ export const engineBridge = (): Plugin => {
   const killClient = (client: Client): void => {
     client.child?.kill();
     client.child = undefined;
+    client.acpPort = undefined;
     client.serve?.kill();
     client.serve = undefined;
     client.servePort = undefined;
@@ -247,13 +250,18 @@ export const engineBridge = (): Plugin => {
 
           const body = await readBody(req);
           const cwd = typeof body["cwd"] === "string" && body["cwd"] !== "" ? body["cwd"] : sandboxDir();
-          const child = spawn(binary, ["acp"], { cwd, stdio: ["pipe", "pipe", "pipe"], windowsHide: true });
+          // The acp child also serves the HTTP API on its own port (measured — see
+          // spike/probe-acp-http-face.mjs). Running it on a known port is what makes
+          // session/abort reach the process that owns the turn (cross-process abort is a no-op).
+          const acpPort = await freePort();
+          const child = spawn(binary, ["acp", "--port", String(acpPort)], { cwd, stdio: ["pipe", "pipe", "pipe"], windowsHide: true });
           client.child = child;
+          client.acpPort = acpPort;
           json(res, 200, { ok: true, binary, cwd });
 
           child.on("error", (error) => emit(client, "engine-error", JSON.stringify({ message: String(error) })));
           child.once("close", (code, signal) => {
-            if (client.child === child) client.child = undefined;
+            if (client.child === child) { client.child = undefined; client.acpPort = undefined; }
             emit(client, "exit", JSON.stringify({ code, signal }));
           });
 
@@ -323,7 +331,16 @@ export const engineBridge = (): Plugin => {
             return;
           }
           const client = clientFor(id);
-          const port = await ensureServe(client);
+          // Routing by PATH shape only (rule 4 explicitly allows this: a path string is not
+          // event vocabulary). An abort must hit the process that OWNS the running turn —
+          // cross-process abort measured as a no-op (traces/opencode/*-abort-probe.jsonl).
+          // Everything else (DELETE and future diff/revert) keeps using the lazy serve, the
+          // path the owner accepted for session delete (#2): the ACP port answered DELETE
+          // with `true` while `session/list` kept listing the session (re-measured 2026-09-24).
+          const aborting = /^\/session\/[^/]+\/abort$/.test(path);
+          const port = aborting && client.child !== undefined && client.child.exitCode === null && client.acpPort !== undefined
+            ? client.acpPort
+            : await ensureServe(client);
           const payload = body["body"] === undefined || body["body"] === null ? undefined : body["body"];
           const init: RequestInit = { method };
           if (payload !== undefined) {

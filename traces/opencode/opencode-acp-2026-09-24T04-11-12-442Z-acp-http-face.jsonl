@@ -1,0 +1,8 @@
+{"t_ms":1229,"dir":"in","id":1,"method":"initialize","result_keys":["protocolVersion","agentCapabilities","authMethods","agentInfo"],"error":null}
+{"t_ms":3390,"dir":"in","id":2,"method":"session/new","result_keys":["sessionId","configOptions"],"error":null}
+{"t_ms":3390,"dir":"in","method":"session/update","variant":"available_commands_update"}
+{"t_ms":4109,"dir":"http","label":"GET /","status":200,"body":"<!doctype html>\n<html lang=\"en\" style=\"background-color: var(--v2-background-bg-deep, #fafafa)\">\n  <head>\n    <meta charset=\"utf-8\" />\n    <meta\n      name=\"viewport\"\n      content=\"width=device-width, initial-scale=1, interactive-widget=resizes-content, viewport-fit=cover\"\n    />\n    <title>OpenCod"}
+{"t_ms":4873,"dir":"http","label":"GET /doc","status":200,"body":"{\"openapi\":\"3.1.0\",\"info\":{\"title\":\"opencode\",\"version\":\"1.0.0\",\"description\":\"opencode api\"},\"paths\":{\"/auth/{providerID}\":{\"put\":{\"tags\":[\"control\"],\"operationId\":\"auth.set\",\"parameters\":[{\"name\":\"providerID\",\"in\":\"path\",\"schema\":{\"type\":\"string\"},\"required\":true}],\"responses\":{\"200\":{\"description"}
+{"t_ms":4877,"dir":"http","label":"GET /global/health","status":200,"body":"{\"healthy\":true,\"version\":\"1.18.32\"}"}
+{"t_ms":4883,"dir":"http","label":"POST /session/ses_probe_nonexistent/abort","status":200,"body":"true"}
+{"t_ms":4929,"dir":"process","event":"close","code":null,"signal":"SIGTERM"}

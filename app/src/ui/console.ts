@@ -48,6 +48,7 @@ export interface SessionFacts {
 export interface ConsoleHandles {
   onSubmit(handler: (text: string) => void): void;
   onRestart(handler: () => void): void;
+  onHalt(handler: () => void): void;
   onOptionChange(handler: (optionId: string, value: string) => void): void;
   onViewChange(handler: (view: "process" | "events") => void): void;
   onNewSession(handler: () => void): void;
@@ -120,6 +121,7 @@ export const mountConsole = (): ConsoleHandles => {
   const registerExpert = need<HTMLButtonElement>("regExpert");
   const input = need<HTMLInputElement>("promptInput");
   const submit = need<HTMLButtonElement>("promptSubmit");
+  const halt = need<HTMLButtonElement>("halt");
   const restart = need<HTMLButtonElement>("restart");
 
   let optionHandler: (optionId: string, value: string) => void = () => {};
@@ -130,6 +132,7 @@ export const mountConsole = (): ConsoleHandles => {
   let optionSignature = "";
   let sessionSignature = "";
   let permissionSignature = "";
+  let haltHandler: (() => void) | undefined;
   let facts: SessionFacts = {};
   /** Thought blocks the operator collapsed — keyed by stream key, survives re-render. */
   const collapsedThoughts = new Set<string>();
@@ -588,10 +591,20 @@ export const mountConsole = (): ConsoleHandles => {
           event.preventDefault();
           fire();
         }
+        // Esc in the command line interrupts the running turn — same path as ■ HALT, so the
+        // only observable outcome is the halt path's (action or visible error).
+        if (event.key === "Escape" && facts.busy === true) {
+          event.preventDefault();
+          haltHandler?.();
+        }
       });
     },
     onRestart(handler): void {
       restart.addEventListener("click", handler);
+    },
+    onHalt(handler): void {
+      haltHandler = handler;
+      halt.addEventListener("click", handler);
     },
     onOptionChange(handler): void {
       optionHandler = handler;
@@ -621,7 +634,8 @@ export const mountConsole = (): ConsoleHandles => {
       if (next.lastError !== undefined) pLastError.textContent = next.lastError;
       if (next.phase !== undefined) phase.textContent = next.phase;
       if (next.phaseNote !== undefined) phaseNote.textContent = next.phaseNote;
-      document.documentElement.dataset["busy"] = next.busy === true ? "true" : "false";
+      document.documentElement.dataset["busy"] = facts.busy === true ? "true" : "false";
+      halt.disabled = facts.busy !== true; // HALT is live only while a turn is; disabled is honest
       renderStage();
       renderSignal();
     },

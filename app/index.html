@@ -15,7 +15,9 @@
          这里的链路状态由真引擎的生死决定（LINK OK / LINK DOWN）
        · 步骤带（01/02/03 带 7 MATCHES 之类）—— "步骤"概念不在事件契约里；静默判据已在 cadence.ts 实现
        · 扫描线上的坐标数字 —— 装饰不许带假遥测；分隔线保留，数字删掉
-       · ▶ HALT —— ACP 无 session/cancel（实测 -32601）；HTTP abort 通道未接（见 status.md 验收 #1）
+     ▶ HALT 已接入（2026-09-24，验收 #1）：ACP 子进程自带 HTTP 面（--port），
+     POST /session/{id}/abort 打到**同一进程**即真中断（stopReason 回 "cancelled"）；
+     跨进程 abort 实测无效（见 traces/opencode/*-halt-in-process.jsonl）。
      诚实边界：模式/模型/effort 只渲染运行时给的清单；缺失一律写 NOT STATED / NOT REPORTED。
 
      设计依据见 docs/visual-guide.md；色板与几何的"为什么"见该文件的 §3。
@@ -337,7 +339,7 @@
   .approval-actions button.reject { border-color: var(--danger); color: var(--danger); }
   .approval-actions button.reject:hover { background: var(--danger); color: var(--ink); border-color: var(--danger); }
 
-  .dock-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: stretch; }
+  .dock-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto auto; align-items: stretch; }
   .cmd { display: flex; align-items: center; gap: 10px; padding: 0 18px; min-width: 0; position: relative; }
   .cmd .caret { color: var(--signal); font-family: var(--f-mono); }
   .cmd input { flex: 1; min-width: 0; background: none; border: 0; outline: none; color: var(--ink); font-family: var(--f-mono); font-size: 13px; font-weight: 400; caret-color: var(--signal); }
@@ -354,6 +356,9 @@
   .btn.primary:hover { background: var(--ink); color: var(--base); }
   .btn[disabled] { color: var(--dim); cursor: default; }
   .btn[disabled]:hover { background: none; color: var(--dim); }
+  /* HALT is the live-interrupt control: danger edge only while a turn is actually in flight. */
+  .btn.halt:not([disabled]) { color: var(--danger); border-left-color: var(--danger); }
+  .btn.halt:not([disabled]):hover { background: var(--danger); color: var(--ink); }
 
   button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
   .register button:focus-visible { outline-offset: -3px; outline-color: currentColor; }
@@ -493,6 +498,7 @@
         <input type="text" id="promptInput" placeholder="STARTING ENGINE" aria-label="command input" disabled>
       </label>
       <button type="button" class="btn primary" id="promptSubmit" disabled>SEND ↵</button>
+      <button type="button" class="btn halt" id="halt" disabled>■ HALT</button>
       <button type="button" class="btn" id="restart">RESTART ⟲</button>
     </div>
   </footer>

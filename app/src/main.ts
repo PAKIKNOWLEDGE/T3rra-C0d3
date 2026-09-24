@@ -14,7 +14,7 @@
 
 import { translateLine } from "./engine/acp.ts";
 import { mapResponse } from "./engine/responses.ts";
-import { deleteSession } from "./engine/engine-http.ts";
+import { abortSession, deleteSession } from "./engine/engine-http.ts";
 import type { AgentEvent } from "./contract/events.ts";
 import { createBridgeTransport, type Transport } from "./engine/transport.ts";
 import { emptyView, reduceView, type ConsoleView } from "./view/derive.ts";
@@ -208,7 +208,7 @@ const handleResponse = (id: number, method: string, result: unknown): boolean =>
     patch({
       busy: true,
       phase: "[ RUNNING ]",
-      phaseNote: "STREAMING · INTERRUPT NOT AVAILABLE OVER ACP (session/cancel: METHOD NOT FOUND)",
+      phaseNote: "STREAMING · ESC OR ■ HALT TO INTERRUPT THIS TURN",
       ...silenceNow(),
     });
     send("session/prompt", { sessionId: view.sessionId, prompt: [{ type: "text", text }] });
@@ -419,7 +419,7 @@ ui.onSubmit((text) => {
   // blows the stage open and pushes the feed off-screen). Full text lives in the stream.
   if (facts.topic === undefined) patch({ topic: shortTopic(text) });
   cadence = beginWaiting(cadence, Date.now());
-  patch({ busy: true, phase: "[ RUNNING ]", phaseNote: "STREAMING · INTERRUPT NOT AVAILABLE OVER ACP (session/cancel: METHOD NOT FOUND)", ...silenceNow() });
+  patch({ busy: true, phase: "[ RUNNING ]", phaseNote: "STREAMING · ESC OR ■ HALT TO INTERRUPT THIS TURN", ...silenceNow() });
   send("session/prompt", { sessionId: view.sessionId, prompt: [{ type: "text", text }] });
 });
 
@@ -443,6 +443,43 @@ ui.onRestart(() => {
     .kill()
     .then(handshake)
     .catch((error: unknown) => patch({ lastError: String(error).slice(0, 160) }));
+});
+
+/**
+ * HALT = `POST /session/{id}/abort` on the HTTP face of the process that owns the turn.
+ * Measured (traces/opencode/*-halt-in-process.jsonl): the engine answers the in-flight
+ * `session/prompt` with stopReason "cancelled" within ~250ms. The end of the turn itself
+ * arrives over the normal stream (prompt.ended) — HALT never claims the stop on its own.
+ * Cross-process abort (a separate `opencode serve`) returns `true` but does nothing
+ * (traces/opencode/*-abort-probe.jsonl) — hence the bridge routes THIS path to the ACP
+ * child's own port. Other HTTP paths (DELETE etc.) intentionally keep the lazy-serve route
+ * the owner accepted for #2; after that routing split the bridge has not been re-tested
+ * end-to-end (see docs/status.md 验收 #1).
+ */
+ui.onHalt(() => {
+  if (!engineReady("HALT")) return;
+  const sessionId = view.sessionId;
+  if (sessionId === undefined || facts.busy !== true) {
+    patch({ lastError: "HALT needs a running turn — none is in flight", phaseNote: "NOTHING RUNNING · HALT INERT" });
+    return;
+  }
+  patch({ phase: "[ HALTING ]", phaseNote: `HALT SENT · POST /session/${sessionId.slice(0, 12)}…/abort` });
+  void abortSession((method, path, body) => transport.http(method, path, body), sessionId)
+    .then((result) => {
+      if (result.status >= 400) {
+        patch({
+          lastError: `halt failed: HTTP ${result.status} ${result.text.slice(0, 80)}`.slice(0, 160),
+          phase: "[ RUNNING ]",
+          phaseNote: "HALT FAILED · RETRY OR RESTART ⟲",
+        });
+        return;
+      }
+      // Accepted. The turn ends through the ordinary stream; do not fake the end here.
+      patch({ phaseNote: "HALT SENT · AWAITING TURN END" });
+    })
+    .catch((error: unknown) => {
+      patch({ lastError: String(error).slice(0, 160), phase: "[ RUNNING ]", phaseNote: "HALT FAILED · RETRY OR RESTART ⟲" });
+    });
 });
 
 ui.onOptionChange((optionId, value) => {

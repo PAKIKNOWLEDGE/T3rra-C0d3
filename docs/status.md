@@ -20,7 +20,7 @@ A 的载体 `current-state.md`、B 的载体 `recommendation.md` 已标【仅历
 
 | # | 问题 | 状态 | 备注 |
 | --- | --- | --- | --- |
-| 1 | 中断（HALT）没有 | 待做 | ACP 无 `session/cancel`（实测 `-32601`）；HTTP 有 `POST /session/{id}/abort` → 需 HTTP 通道。当前真中断仅 `RESTART ⟲` |
+| 1 | 中断（HALT）没有 | **代码接入 · 待目视 · 部分未复测** | 2026-09-24：`■ HALT` 钮（坞内，busy 时可用，Esc 同路径）→ `POST /session/{id}/abort` 打到**拥有 turn 的进程**。同进程 abort 实测（独立进程直连）：252ms 内 `session/prompt` 回 `stopReason:"cancelled"`，中断后会话可用（`*-halt-in-process.jsonl`）。跨进程 abort 实测无效（`true` 但流不断，`*-abort-probe.jsonl`）。桥按路径分流：仅 `/abort` → ACP 子进程 `--port`，其余（含 DELETE）→ 懒起 serve。**未做**：分流后桥未端到端复测（真运行 turn 经隧道 abort、DELETE 回归各一次）；见 handover「已知未做」 |
 | 2 | 会话列表 + 网页端删除 | **已修 · 主人已过** | 整行=LOAD、`×`=删除；不自动建会话；左轨/右栏/空态三处青色主操作新建；删除走引擎 HTTP；存储 `%USERPROFILE%\.local\share\opencode\`（`opencode.db` + `storage/session_diff/`——**diff 是否清掉【未验】**）。**2026-09-23 目视通过**（含 NEW 显眼化） |
 | 2b | 打开即建垃圾会话 | **已修** | handshake 只 `initialize` + `session/list`；首条指令才 `session/new`（queued）；删当前会话不再自动再开 |
 | 2c | BUILD/PLAN 点了像死 | **已修待目视** | 点击即乐观切换 `aria-pressed` 并本地改 `currentValue`，再发 `set_config_option`；缺会话时写 LAST ERROR |
@@ -36,15 +36,15 @@ A 的载体 `current-state.md`、B 的载体 `recommendation.md` 已标【仅历
 | 10 | 审批无界面 | **已实现 · 待主人目视** | 底栏 `[ APPROVAL ]` 条：按引擎 `options` 渲三档按钮并回 `{outcome:{outcome:"selected",optionId}}`（与 trace 同形）。默认配置引擎不问（需 `permission.*="ask"`）——右栏 APPROVAL 空闲时写 `NOT REQUESTED` |
 | 11 | 闸门假阴性 | **已修** | 控件扫描 + `app/ui-manifest.json` 清单制（缺分类 / 陈旧 / 无引用 → 构建失败） |
 
-**计数**：已修 **10**（#2–#11；**#2、#5–#9 主人已过**，**#10 待目视**），**待做 1**（#1 中断）。  
-**优先级**：**#10 目视验收 → #1 中断**（HTTP 通道已具备，可共用 `POST /abort`）。  
+**计数**：**11/11 有代码**。#2、#5–#9 主人已过；#10 待目视；**#1 代码接入、未经主人目视、分流后未端到端复测**（见 #1 行与 handover「已知未做」）。  
+**优先级**：**#1 两项复测（隧道 abort 真 turn / DELETE 回归）→ #1、#10 目视**；其后按 [`capability-map.md`](./capability-map.md) §3 建议序（cwd 选择器、permission 配置面、多会话、fork/resume/close、审批 diff）。  
 **汇报要求**：「已知未做」必须与「已完成」并列；清单未勾完前，「闸全绿」不作为交付证据。
 
 ### 能力全图（2026-09-23，子代理盘点入库）
 
 完整对照与建议优先级见 [`capability-map.md`](./capability-map.md)。  
-**结构空洞（摘要，与验收清单并列）**：无 HALT（#1）；**无项目/cwd 选择**（固定 `app/.sandbox`，桥 `/spawn` 已可收 cwd、UI 未暴露）；**无项目配置入口**（`permission.*=ask` 无法从 app 定位/编辑 → #10 默认不触发且无解释）；无 diff/文件/终端/搜索/图片等工作面；HTTP 透传目前仅 DELETE。  
-**建议优先级（未拍板）**：cwd 选择器、配置面、HALT、多会话、fork/resume/close、审批 diff——详见能力全图 §3。
+**结构空洞（摘要，与验收清单并列）**：**无项目/cwd 选择**（固定 `app/.sandbox`，桥 `/spawn` 已可收 cwd、UI 未暴露）；**无项目配置入口**（`permission.*=ask` 无法从 app 定位/编辑 → #10 默认不触发且无解释）；无 diff/文件/终端/搜索/图片等工作面；HTTP 透传按路径分流（仅 `/abort` → ACP 端口，其余 → serve），**分流状态未端到端复测**。**HALT（#1）代码接入：待复测、待主人目视。**  
+**建议优先级（未拍板）**：cwd 选择器、配置面、多会话、fork/resume/close、审批 diff——详见能力全图 §3（其第 1 项 HALT 已代码接入，未复测/未目视）。
 
 ## 范式更新（2026-09-23，死键二次回潮后）
 
@@ -131,9 +131,8 @@ npm run check:all
 
 | 优先级 | 类别 | 缺口 |
 | --- | --- | --- |
-| **P0** | 产品 | **验收 #2 已实现待目视**：会话列表 + 网页删除（`session/list` + HTTP `DELETE`） |
+| **P0** | 产品 | **验收 #2 已过（主人目视）**：会话列表 + 网页删除（`session/list` + HTTP `DELETE`） |
 | P1 | 产品 | 审批三档界面（#10）；断链/错误态；多会话 |
-| P2 | 产品 | HALT（#1；HTTP 透传已具备，`POST /session/{id}/abort`） |
 | 开放 | 产品 | 网页粘贴图片（见上「开放项」；引擎 image capability 已实测有，UI 未做；**Tauri 依赖未证实**） |
 | P2 | 工程 | Tauri 外壳（替换 `app/plugins/engine-bridge.ts`，`src/` 不动）；打包；Latin 展示轨仍用平台字体（可再分发展示字体未定） |
 | — | 契约 | 显式 schema 版本号与变更纪律（规则 23） |
@@ -149,9 +148,11 @@ npm run check:all
 - **间隔按相位分账**（等待 / 流式 / 工具）；非运行期间丢弃；**换 model 丢样本**（规则 9）；新会话重置。
 - 界面：运行时大锚点 = 静默秒数；判决 `Stalled / Slow / Nominal / Not Established`；右栏 `[ SIGNAL ]`（LEVEL / QUIET / BASELINE / SAMPLES n/3 / THRESHOLDS / LAST SIGN）。不运行时不判，锚点回会话秒表。
 
-**中断**：ACP 面 `session/cancel` **不存在**（`-32601`，探针 `spike/probe-session-cancel.mjs`，trace `traces/opencode/*-cancel-probe.jsonl`）。  
-HTTP 面有 `POST /session/{sessionID}/abort`、`POST /api/session/{sessionID}/interrupt`（本地 OpenAPI）。  
-→ 当前唯一真中断是 `RESTART ⟲`；做 HALT 须接 HTTP 通道（同时解锁 diff / revert / pty）。
+**中断（#1 代码接入·未复测，2026-09-24）**：ACP 面 `session/cancel` **不存在**（`-32601`，探针 `spike/probe-session-cancel.mjs`，trace `traces/opencode/*-cancel-probe.jsonl`）。  
+HTTP 面 `POST /session/{sessionID}/abort` **只对拥有该 turn 的进程有效**：  
+- 独立 `opencode serve` 收 abort 返回 `true` 但流不断（跨进程空操作，trace `*-abort-probe.jsonl`，探针 `spike/probe-http-abort.mjs`）；  
+- `opencode acp --port P` 自带 HTTP 面（trace `*-acp-http-face.jsonl`）；打同一进程的 abort **实测真中断**：`session/prompt` 回 `stopReason:"cancelled"`，252ms，中断后会话可用（trace `opencode-acp-2026-09-24T04-22-08-065Z-halt-in-process.jsonl`，探针 `spike/probe-halt-in-process.mjs`）。  
+→ 代码接入（**分流后未端到端复测**）：桥 spawn `acp --port`；隧道仅 `/abort` 分流到该端口，其余（含 DELETE）→ 懒起 serve；坞内 `■ HALT` + Esc。`RESTART ⟲` 保留为粗兜底；diff / revert / pty 仍可骑同一通道（未接）。
 
 ## 视觉分工
 
@@ -170,9 +171,9 @@ HTTP 面有 `POST /session/{sessionID}/abort`、`POST /api/session/{sessionID}/i
 | 顶部 STALLED/IDLE/LOST/APPROVAL 状态条 | 样张 chrome；产品状态须由真引擎驱动 | — |
 | 步骤带（01/02/03） | 「步骤」概念不在契约内 | 相位模型/步骤模型落地 |
 | 扫描线坐标数字 | 装饰不带假遥测（分隔线保留，数字删） | — |
-| `▶ HALT` | ACP 无 cancel（已实测），先不给按钮 | HTTP abort 通道 |
+| `▶ HALT` | — | **已接入（2026-09-24，#1）**：坞内 `■ HALT`，走同进程 HTTP abort |
 | 状态条外大锚点语义 | 现锚点为真实时钟；判决词为真实相位；比较行 `SILENCE NOT MEASURED` | 静默判据（已落地） |
-| 会话切换 / EVENTS | 会话管理未做 | `session/list` + `session/load`（回放已实测可用） |
+| 会话切换 / EVENTS | — | **已接入（#3、#2）**：EVENTS 原始日志；会话列表 LOAD |
 
 **真实交互**：`OPERATOR / EXPERT` 语域（EXPERT 显示 `[ TRANSPORT ]`：binary/cwd/exit/last error/unmapped/provenance）。舞台主标题 = 操作者指令的**首行短主题**（无则 absence；完整指令在流内）。  
 **证据**：`npm run check:all` 六道闸通过；`spike/probe-app-pipeline.mjs` 跑通 thought → message → usage → `stopReason`。**渲染观感归主人目视。**
@@ -183,6 +184,21 @@ HTTP 面有 `POST /session/{sessionID}/abort`、`POST /api/session/{sessionID}/i
 - **引擎 = opencode（ACP v1）**。依据：`docs/adapters/opencode-acp.md` + `traces/opencode/` + `spike/`。四条核心判据已闭合（报文存在性、options、`session/load`、审批）。
 - **界面 = ark 族 · complex · 仅暗色**，见 `docs/design-contract.md`；范本 `demo/ark-console.html`。
 - **继承规则不继承代码**；实现新写。
+
+## 2026-09-24：#1 HALT 批次（中途停，交他人接手）
+
+**做了什么**（对应 handover「#1 代码接入」与本文验收表 #1 行）：
+
+- 新探针与 trace：`probe-http-abort`（跨进程 abort = 空操作）、`probe-acp-http-face`（acp 自带 HTTP 面，零 token）、`probe-halt-in-process`（同进程 abort 真中断、中断后 turn 可用）、`probe-bridge-route`（桥隧道路由）。
+- 产品代码：桥 spawn `acp --port` + 隧道按路径分流（仅 `/abort` → ACP 端口，其余含 DELETE → 懒起 serve）；`engine-http.abortSession`；坞内 `■ HALT` + Esc；`ui-manifest` 表态；`test/halt.test.ts`。
+- 闸：本段提交时 `npm run check:all` 全绿（tsc · 52 单测 · 四道机检）。**全绿 ≠ 交付证据**（见上「汇报要求」）。
+
+**如实记录的两处发现（未修，留给接手）**：
+
+1. 同进程 DELETE 假成功：打到 ACP 端口的 `DELETE /session/{id}` 返回 `true`、再删 404，但 stdio `session/list` 仍列该会话（scratch 复测，trace 未入库）。当前分流让 DELETE 回serve，但该分流状态**未做回归复测**。
+2. 经桥的真运行 turn abort **未端到端复测**：同进程 abort 的中断与可用性结论来自独立进程直连实测。
+
+**环境副作用**：今日探针在 `app/.sandbox` 对应引擎存储留下若干测试会话（标题如 `Count 1-300…`、`New session - 2026-09-24T04:*` 等），可在界面删除。免费模型 `nemotron-3.5-lightning-free` 当日出现限流（首块延迟 17s→122s→不出流），部分探针轮次因此空转。
 
 ## 2026-09-23（晚）：对话区 A 批 + 主人过验
 

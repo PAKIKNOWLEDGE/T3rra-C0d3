@@ -15,19 +15,19 @@
 | 问 | 答 |
 | --- | --- |
 | 项目是什么 | opencode 的桌面控制台前端（ark 族暗色），产品代码 `app/` |
-| 引擎怎么接 | ACP stdio（桥）+ 通用 HTTP 透传 `/__t3/http` → `opencode serve`（删会话已用；abort/diff 等未接） |
+| 引擎怎么接 | ACP stdio（桥）+ 通用 HTTP 透传 `/__t3/http`（按路径分流：`/abort` → ACP 子进程自带端口，其余 → 懒起 `opencode serve`；分流状态未复测） |
 | 工作目录 | **固定** `app/.sandbox`——**没有选真实项目根的 UI**（已知硬伤） |
 | 项目配置 | **app 内无入口**读写 `opencode.json` / `permission.*`（审批为何不问无处解释） |
-| 验收账 | 11 条：已过 #2–#9、#11；#10 待目视；#1 HALT 待做 |
-| 最大结构性空洞 | HALT、cwd 选择器、设置/配置面、diff/文件/终端/图片等工作面 |
+| 验收账 | 11 条：#1–#11 全部有代码；**#10 待主人目视；#1 待复测与目视**（见 §2 C） |
+| 最大结构性空洞 | cwd 选择器、设置/配置面、diff/文件/终端/图片等工作面（HALT 已接，见 §2 C） |
 
 ---
 
 ## 1. 结论
 
-核心最小闭环已有真实现：会话增删载、流式对话、工具行、markdown、reasoning、model/mode/effort、审批条、事件日志、静默判据、重启。  
-结构性空洞：**① 无 HALT ② 无项目/cwd 选择 ③ 无设置/配置面 ④ 无 diff/文件/终端/搜索/图片等工作面**。  
-HTTP 通道已就绪，目前**只承载 DELETE**——abort、diff、revert、pty、file、search 均可骑同一通道，产品侧一行未接。
+核心最小闭环已有真实现：会话增删载、流式对话、工具行、markdown、reasoning、model/mode/effort、审批条、事件日志、静默判据、重启、HALT（#1，2026-09-24 接入）。  
+结构性空洞：**① 无项目/cwd 选择 ② 无设置/配置面 ③ 无 diff/文件/终端/搜索/图片等工作面**。  
+HTTP 通道已接两单：**DELETE 与 abort**——diff、revert、pty、file、search 可骑同一通道，产品侧未接。
 
 ---
 
@@ -59,7 +59,7 @@ HTTP 通道已就绪，目前**只承载 DELETE**——abort、diff、revert、p
 | 能力 | 状态 | 证据 | 依赖 | 备注 |
 | --- | --- | --- | --- | --- |
 | 流式 / 工具行 / markdown / reasoning 折叠 / EVENTS / 静默 | **present** | 验收 #3 #5–#9 主人已过 | — | — |
-| 中途取消 HALT | **missing** | 【实测】ACP cancel `-32601`；HTTP abort 在 OpenAPI | `engine-http` + 按钮 | 验收 **#1**；通道已备 |
+| 中途取消 HALT | **代码已接入 · 未端到端复测、待目视**（#1，2026-09-24） | 【实测】ACP cancel `-32601`；同进程 `POST /session/{id}/abort` → `stopReason:"cancelled"`（~252ms）；跨进程 abort 无效 | `*-halt-in-process.jsonl`、`*-abort-probe.jsonl` | 坞内 `■ HALT` + Esc；桥**仅把 `/abort` 分流到 ACP 子进程端口**（该分流改动未复跑探针） |
 | 重试 / 编辑末条 / fork 对话 | **missing** | 无代码 | 引擎机制多【未验】 | — |
 | compact / 清上下文 | **missing** | `available_commands_update` 故意不映射（rule 5） | 【未验】+ 契约讨论 | — |
 | 工具结果体（读了什么/grep 到什么） | **missing** | `tool_call` 只映射 title/status | **契约变更**（规则 23） | 目前只知「调了什么」 |
@@ -98,7 +98,7 @@ HTTP 通道已就绪，目前**只承载 DELETE**——abort、diff、revert、p
 | 能力 | 状态 | 证据 | 依赖 | 备注 |
 | --- | --- | --- | --- | --- |
 | ACP stdio | **present** | bridge + transport | — | 规则 4：唯一字节通道 |
-| HTTP 透传 | **present** | `transport.http` + 懒起 serve | — | **现仅 DELETE 在用** |
+| HTTP 透传 | **partial** | `transport.http`；桥按路径分流：`/abort` → ACP 子进程端口，其余 → 懒起 serve | — | DELETE（经 serve）+ abort（经 ACP 端口）**分流后未复测**；diff 等未接 |
 | 断链 / 重启 / 链路态 | **partial**/present | LINK OK/DOWN；RESTART | — | 退出禁输入；无自动重开会话 |
 | Tauri 外壳 | **missing**（P2） | status 待补清单 | Tauri 工程 | 替换 bridge 时 transport 不变 |
 
@@ -125,7 +125,7 @@ HTTP 通道已就绪，目前**只承载 DELETE**——abort、diff、revert、p
 | 设置面板 / 配置编辑器 | **missing** | 无 | UI + 文件 | 解锁「为何不问我」 |
 | 空态可恢复 | **present** | `＋ CREATE`、placeholder 链 | — | 范式 4 |
 | 导出会话 | **missing** | eventLog/stream 在内存 | 本地导出 | 低成本 |
-| Esc = HALT | **partial** | Enter 发送已有；无 Esc | 依赖 #1 | — |
+| Esc = HALT | **present**（#1，2026-09-24） | 输入框内 Esc 走同一 `#halt` 按钮（console.ts） | — | busy 时钮才可点；disabled 即诚实 |
 | 可访问性 | **partial** | aria-*、focus、reduced-motion | — | 终判归主人目视 |
 | LAST ERROR / 失败恢复输入框 | **present** | 范式 3–4 | — | — |
 
@@ -135,7 +135,7 @@ HTTP 通道已就绪，目前**只承载 DELETE**——abort、diff、revert、p
 
 供主人取舍；**不是已决定计划**：
 
-1. HALT（验收 #1）——通道与端点双备  
+1. ~~HALT（验收 #1）~~ **已实现（2026-09-24，待目视）**——同进程 abort；跨进程实测无效  
 2. **项目根 / cwd 选择器**——固定 sandbox = 不能对真项目干活  
 3. **permission 配置可见/可设**——否则 #10 永看不到真请求  
 4. 多会话并发 / 后台跑  
@@ -155,7 +155,7 @@ HTTP 通道已就绪，目前**只承载 DELETE**——abort、diff、revert、p
 1. OpenAPI 162 路径未逐条展开；`session.rename` / compact 是否存在【未验】  
 2. `allow_always` 持久化  
 3. fork/resume/close 实际调用形状（仅 capabilities 声明）  
-4. ACP 私有 server 与桥起的 `serve` **能否跨进程 abort**  
+4. ~~ACP 私有 server 与桥起的 `serve` 能否跨进程 abort~~ → **已闭合（2026-09-24）：跨进程无效**（`true` 但流不断）；同进程 abort 有效，`*-halt-in-process.jsonl` / `*-abort-probe.jsonl`  
 5. 删除后 `storage/session_diff/` 是否清理  
 6. 一切渲染观感（无头禁令；本文件不含「看过界面」声称）
 

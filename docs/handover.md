@@ -25,8 +25,9 @@ npm run check:all                            # 六道闸，提交前须全绿
 - **会话恢复能力**：`session/load` 以普通 `session/update` 回放历史，**先流完、响应后到**（规范行为）。证据：`traces/opencode/*-load-redacted.jsonl`、`*-sequencing-redacted.jsonl`（含 `load_timing`）。  
   **界面 LOAD 已接**（会话列表按钮，见 #2）。
 - **静默判据（规则 7–9）**：`app/src/view/cadence.ts` + `test/cadence.test.ts`（10 例）。基线 = 当前相位间隔中位数、`×8/×25`、样本 &lt;3 拒绝给判据、10 分钟硬上限仅兜底、非运行期间丢弃、换 model 丢样本。界面：大锚点=静默秒数、`[ SIGNAL ]` 面板。
-- **六道闸 + 清单制**：`tsc` · vitest 50 条 · `check:app`（`app/ui-manifest.json` + 字体 38/38 + 渲染层 id）· `check:demo` · `check:traces` · `check:docs`。
+- **六道闸 + 清单制**：`tsc` · vitest 52 条 · `check:app`（`app/ui-manifest.json` + 字体 38/38 + 渲染层 id）· `check:demo` · `check:traces` · `check:docs`。
 - **EVENTS 视图**（`+秒数 / kind / 事实描述`）与 **NEW**（`session/new`，id 变更才清空）。
+- **HALT（#1，2026-09-24 代码接入 · 待目视 · 分流后未端到端复测）**：坞内 `■ HALT` + 输入框 Esc → `POST /session/{id}/abort` 打到 **ACP 子进程自己的端口**（桥 spawn `acp --port`；隧道**仅 `/abort` 分流**，其余含 DELETE 仍走懒起 serve）。分流后 #2 的 DELETE 路径**尚未复测**（见下「已知未做」）。**跨进程 abort 实测无效**（返回 `true` 但流不断）；同进程 abort 实测 252ms 内 `stopReason:"cancelled"`、中断后会话可用（独立进程直连，非经桥）。证据：`traces/opencode/*-halt-in-process.jsonl`、`*-abort-probe.jsonl`、`*-acp-http-face.jsonl`。
 - **对话区（验收 #5–#9）**：回合分组、工具行按到达序内嵌、时间戳、安全 markdown、reasoning 真折叠、输入焦点左侧色条、锚点缩号。见 `derive.ts` 统一流、`ui/turns.ts`、`ui/markdown.ts`。  
   **主人目视 2026-09-23「通过」**。舞台标题只取指令首行截断（曾整段进 `h1` 撑爆，已修）。
 - **会话列表 + 删除（验收 #2，主人已过）**：右栏 `[ SESSIONS ]`；列表/加载走 ACP，删除走桥 `/http` → `opencode serve`。测试 `test/sessions.test.ts`。  
@@ -39,13 +40,13 @@ npm run check:all                            # 六道闸，提交前须全绿
 - **视觉第 2 代已接入 `app/`**；对话区已过，#2 面板待主人目视。
 - **`RESTART ⟲`**：真动作（杀进程重开），但是**粗中断**。重开后可用会话列表 LOAD 回放。
 
-### 未完成（验收清单 11 条中的 1 条）
+### 未完成
 
-完整表见 [`status.md`](./status.md)「仓库主人验收清单」。摘要：
+验收清单 11 条**全部有代码**。#2、#5–#9 主人已过。**#10 待目视。#1 既待目视，也待两项复测**（经桥的真 turn abort、分流后 DELETE 回归）——见上「#1 代码接入」。
 
-| # | 事项 | 卡点 / 做法 |
+| # | 事项 | 状态 / 备注 |
 | --- | --- | --- |
-| 1 | **中断 HALT** | ACP `session/cancel` 不存在（实测 `-32601`）。HTTP `POST /session/{sessionID}/abort` → 桥 `/http` 已具备 |
+| 1 | **中断 HALT** | 代码接入：同进程 `POST /session/{id}/abort`（桥 spawn `acp --port`，仅 `/abort` 分流）。ACP `session/cancel` 仍 `-32601`；**跨进程 abort 实测无效**；分流后桥未端到端复测 |
 
 ### 半完成 · 待目视
 
@@ -65,10 +66,10 @@ npm run check:all                            # 六道闸，提交前须全绿
 
 - **网页粘贴图片**：opencode CLI 支持；本网页 UI 未做。ACP `promptCapabilities.image: true` 已实测有。**是否必须 Tauri 未验**——浏览器 paste/File 或许够用，先记开放，不进 P0。
 
-### #1 推荐做法（通道已就绪）
+### #1 代码接入（分流后未复测；通道细节见 status.md 验收表）
 
-桥已有通用 HTTP 透传（`POST /__t3/http` + 懒起 `opencode serve`）。HALT → 在 `app/src/engine/engine-http.ts` 加 `POST /session/{id}/abort` 即可。  
-**注意**：`abort` 只能中断**同一 serve 进程**内的会话；若与 ACP 分进程，可能需要「kill + `session/load`」退路（已实测可用）。
+桥 spawn `opencode acp --port <freePort>`；`/__t3/http` 隧道**仅把 `/session/{id}/abort` 分流到该端口**，其余（含 DELETE）仍走懒起 serve。跨进程 abort 实测返回 `true` 但流不断；同进程 abort 实测 `stopReason:"cancelled"`（独立进程直连，**经桥的真 turn 未测**）。分流后 DELETE 回归未复测（分流前实测：打到 ACP 端口的 DELETE 返回 `true` 但 `session/list` 仍列出——scratch 观察，未入库）。  
+**未验**：RESTART（杀 acp 子进程）与在途 turn 的交互；隧道→同进程 abort 用真运行 turn 的端到端验证。
 
 ## 三、规矩
 

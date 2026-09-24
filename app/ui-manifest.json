@@ -37,6 +37,10 @@
       "wired": true,
       "role": "dock: send the instruction"
     },
+    "halt": {
+      "wired": true,
+      "role": "dock: interrupt the running turn (HTTP POST /session/{id}/abort on the ACP process' own port); also Esc in the input"
+    },
     "restart": {
       "wired": true,
       "role": "dock: kill and respawn the engine process"

@@ -1,0 +1,10 @@
+{"t_ms":621,"dir":"http","step":"probe","result":"{\"binary\":\"C:\\\\Users\\\\pachu77\\\\AppData\\\\Roaming\\\\npm\\\\node_modules\\\\opencode-ai\\\\bin\\\\opencode.exe\",\"cwd\":\"C:\\\\DEV\\\\develop\\\\t3rra-C0d3\\\\app\\\\.sandbox\"}"}
+{"t_ms":1355,"dir":"http","step":"spawn","result":"{\"ok\":true,\"binary\":\"C:\\\\Users\\\\pachu77\\\\AppData\\\\Roaming\\\\npm\\\\node_modules\\\\opencode-ai\\\\bin\\\\opencode.exe\",\"cwd\":\"C:\\\\DEV\\\\develop\\\\t3rra-C0d3\\\\app\\\\.sandbox\"}"}
+{"t_ms":3474,"dir":"count","step":"after-spawn","engines":1}
+{"t_ms":3779,"dir":"tunnel","step":"abort-fake","attempt":1,"status":200,"body":"true"}
+{"t_ms":3893,"dir":"count","step":"after-tunnel","engines":1}
+{"t_ms":3904,"dir":"in","id":1,"method":"initialize","result_keys":["protocolVersion","agentCapabilities","authMethods","agentInfo"],"error":null}
+{"t_ms":5435,"dir":"in","id":2,"method":"session/new","result_keys":["sessionId","configOptions"],"error":null}
+{"t_ms":7421,"dir":"tunnel","step":"delete-created","id":"ses_f2e4b6b55ffeKMxr0bfvpMwv0C","status":200,"body":"true"}
+{"t_ms":7449,"dir":"in","id":3,"method":"session/list","result_keys":["sessions"],"error":null}
+{"t_ms":9429,"dir":"verdict","verdict":"TUNNEL_ON_ACP_PORT_AND_DELETE_OK","afterSpawn":1,"afterTunnel":1,"tunnelStatus":200,"deleteStatus":200}

@@ -12,6 +12,10 @@
 | `spike/spike-acp-opencode.mjs` | 握手 / 选项 / 可选真 prompt | `traces/opencode/*-handshake.jsonl`、`*-prompt.jsonl` |
 | `spike/spike-acp-load.mjs` | **脱敏** load 回放（只记 kind） | `traces/opencode/*-load-redacted.jsonl` |
 | `spike/spike-acp-sequencing.mjs` | load 时序 + effort 按模型 | `traces/opencode/*-sequencing-redacted.jsonl` |
+| `spike/probe-session-cancel.mjs` | ACP `session/cancel` 存在性 | `traces/opencode/*-cancel-probe.jsonl` |
+| `spike/probe-http-abort.mjs` | **跨进程** abort（独立 serve）是否中断 | `traces/opencode/*-abort-probe.jsonl` |
+| `spike/probe-acp-http-face.mjs` | `opencode acp --port` 是否自带 HTTP 面（零 token） | `traces/opencode/*-acp-http-face.jsonl` |
+| `spike/probe-halt-in-process.mjs` | **同进程** abort 是否真中断 + 中断后可用性 | `traces/opencode/*-halt-in-process.jsonl` |
 | （本地导出） | `opencode serve` `GET /doc` → OpenAPI 3.1，**162 paths** | `traces/opencode/openapi-1.17.18.json` |
 | （官方 schema） | `https://opencode.ai/config.json` 的 `permission` | `traces/opencode/opencode-config.schema.json` |
 
@@ -55,11 +59,17 @@
   符合 ACP「MUST replay… respond only after all entries streamed」→ 适配器可把「load 已返回」当「历史完整」。  
   （首测曾挑到空会话、结论相反；换有历史会话才定——挑会话是此类实验的必要条件。）
 - **`session/list` 仅四字段**：`{sessionId, cwd, title, updatedAt}`，**无消息数/轮数**。  
-  **已接入产品**：`responses.ts` → `sessions.updated`；右栏 `[ SESSIONS ]`。删除走 HTTP **`DELETE /session/{sessionID}`**（OpenAPI）经桥 `/http` + 本地 `opencode serve`。  
+  **已接入产品**：`responses.ts` → `sessions.updated`；右栏 `[ SESSIONS ]`。删除走 HTTP **`DELETE /session/{sessionID}`**（OpenAPI）经桥 `/http` → 懒起 `opencode serve`（主人验收 #2 的路径；2026-09-24 曾把 DELETE 也改路由到 acp 端口，实测假成功——见下「DELETE 反向注意」——已改回分流）。  
   LOAD 走 ACP `session/load { sessionId, cwd, mcpServers }`（与 spike 同形）。
-- **`session/cancel` 不存在（本机 1.18.32）**：请求得 **`-32601 Method not found`**，stderr 同步出现。  
-  → ACP 面无中断。替代：HTTP `POST /session/{sessionID}/abort`、`POST /api/session/{sessionID}/interrupt`（本地 OpenAPI）→ 中断走 HTTP 通道或杀进程（现 `RESTART ⟲`）。  
+- **`session/cancel` 不存在（本机 1.18.32）**：请求得 **`-32601 Method not found`**，stderr 同步出现。→ ACP 面无中断。  
   trace：`traces/opencode/*-cancel-probe.jsonl`，探针 `spike/probe-session-cancel.mjs`。
+- **中断 = HTTP `abort`，且必须打到同一进程【实测 2026-09-24】**：  
+  - `opencode acp --port P` **自带完整 HTTP 面**（GET `/doc`、GET `/global/health` = 200；未指定时默认 `--port 0` 随机）——探针 `spike/probe-acp-http-face.mjs`，trace `*-acp-http-face.jsonl`。  
+  - 流式中对本进程端口 `POST /session/{id}/abort` → 在途 `session/prompt` 的响应带 **`stopReason: "cancelled"`**（实测 252ms 内到位），随后同会话再发指令正常出流（**中断后会话可用**）。  
+    trace：`traces/opencode/opencode-acp-2026-09-24T04-22-08-065Z-halt-in-process.jsonl`。  
+  - **跨进程 abort 是空操作**：独立的 `opencode serve` 收 abort 返回 `true`，而 ACP 子进程里的 turn 继续出流（实测其后 1155 条 update 未断）——trace `*-abort-probe.jsonl`。  
+  - **DELETE 反向注意【实测 2026-09-24】**：打到 ACP 自身端口的 `DELETE /session/{id}` 返回 `true`、再删报 404，但 **ACP stdio 的 `session/list` 仍列出该会话**（scratch 复测，trace 未入库）；经懒起 serve 的 DELETE 是主人已验收的 #2 路径。两端口对 DELETE 的效果不一致，原因未查。  
+  → 产品接法（**未端到端复测**）：桥 spawn `acp --port <freePort>`；`/http` 隧道**仅对 `/session/{id}/abort` 分流到 ACP 端口**，其余（含 DELETE）仍走懒起 serve（`engine-bridge.ts`）。`RESTART ⟲` 保留为粗兜底。
 - **`session/set_config_option { sessionId, configId, value }` 可用**，响应带回**完整 `configOptions`**——界面照响应重渲染，不自维护清单。
 - **`session/new` 中 `modes` 为 `null`**：模式在 configOptions 的 `mode`。
 
