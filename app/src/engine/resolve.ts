@@ -1,12 +1,9 @@
 /**
  * Engine resolution.
  *
- * Constraints from the owner's ruling (2026-09-23): the order is PATH → known install
- * locations → explicit override, paths are joined portably (no hand-written backslashes),
- * and **no host path is baked in** — everything comes from the environment handed to us.
- *
- * The engine is a deliberate choice, not something a stray PATH entry can flip: opencode is
- * preferred only when asked, and one explicit override short-circuits the search entirely.
+ * Order: explicit override short-circuits; otherwise **opencode first** (owner ruling
+ * 2026-09-23 — the product engine is opencode; omp stays only as a fallback candidate).
+ * Paths are joined portably; no host path is baked in.
  */
 
 import { join } from "node:path";
@@ -42,7 +39,7 @@ export const resolveEngineCandidates = (env: EngineEnv): EngineResolution => {
 
   const opencode = opencodeCandidates(env);
   const omp = ompCandidates(env);
-  return env.T3RRA_ENGINE === "opencode"
-    ? { candidates: [...opencode, ...omp], reason: "env-preference" }
-    : { candidates: [...omp, ...opencode], reason: "default-order" };
+  if (env.T3RRA_ENGINE === "omp") return { candidates: [...omp, ...opencode], reason: "env-preference" };
+  if (env.T3RRA_ENGINE === "opencode") return { candidates: [...opencode, ...omp], reason: "env-preference" };
+  return { candidates: [...opencode, ...omp], reason: "default-order" };
 };

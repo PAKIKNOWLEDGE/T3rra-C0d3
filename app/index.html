@@ -13,9 +13,9 @@
      样张里有、这里故意没有的东西，都不是漏了，而是没有真数据托底（悬空控件是硬禁令）：
        · 顶部状态条 STALLED/IDLE/LOST/APPROVAL —— 那是样张的展示用 chrome；
          这里的链路状态由真引擎的生死决定（LINK OK / LINK DOWN）
-       · 步骤带（01/02/03 带 7 MATCHES 之类）—— 静默判据与"步骤"概念还没实现
+       · 步骤带（01/02/03 带 7 MATCHES 之类）—— "步骤"概念不在事件契约里；静默判据已在 cadence.ts 实现
        · 扫描线上的坐标数字 —— 装饰不许带假遥测；分隔线保留，数字删掉
-       · ▶ HALT —— ACP 的 session/cancel 还没实测，先不给按钮（见 status.md 待办）
+       · ▶ HALT —— ACP 无 session/cancel（实测 -32601）；HTTP abort 通道未接（见 status.md 验收 #1）
      诚实边界：模式/模型/effort 只渲染运行时给的清单；缺失一律写 NOT STATED / NOT REPORTED。
 
      设计依据见 docs/visual-guide.md；色板与几何的"为什么"见该文件的 §3。
@@ -114,9 +114,9 @@
   .phase { display: flex; align-items: center; gap: 10px; color: var(--signal); }
   .phase::before { content: ""; width: 30px; height: 2px; background: var(--signal); }
   .phase .who { font-family: var(--f-mono); font-size: 10px; letter-spacing: .18em; }
-  h1 { font-family: var(--f-display); font-weight: 400; text-transform: uppercase; font-size: clamp(28px, 3.2vw, 44px); line-height: 1.04; letter-spacing: .01em; margin: 12px 0 10px; overflow-wrap: anywhere; }
+  h1 { font-family: var(--f-display); font-weight: 400; text-transform: uppercase; font-size: clamp(28px, 3.2vw, 44px); line-height: 1.04; letter-spacing: .01em; margin: 12px 0 10px; overflow-wrap: anywhere; max-width: 100%; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
   h1 .cjk { font-family: var(--f-cjk); font-weight: 700; letter-spacing: .06em; }
-  h1 .hollow { display: block; color: transparent; -webkit-text-stroke: 1px rgba(238,241,242,.62); font-size: .7em; letter-spacing: .12em; }
+  h1 .hollow { display: block; color: transparent; -webkit-text-stroke: 1px rgba(238,241,242,.62); font-size: .7em; letter-spacing: .12em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   @supports not (-webkit-text-stroke: 1px black) { h1 .hollow { color: var(--muted); } }
   .meta-row { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
   .meta-row .mono { font-size: 11px; color: var(--muted); }
@@ -125,25 +125,78 @@
   .scanline::after { content: ""; position: absolute; inset: auto 0 -4px 0; height: 4px; background: repeating-linear-gradient(90deg, var(--rule-mid) 0 1px, transparent 1px 14px); }
 
   .anchor { position: relative; z-index: 2; display: flex; align-items: flex-end; gap: 14px; }
-  .anchor .num { font-family: var(--f-display); font-size: clamp(76px, 11vw, 152px); line-height: .84; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
-  .anchor .unit { font-family: var(--f-narrow); font-size: 15px; color: var(--muted); padding-bottom: 15px; letter-spacing: .1em; }
-  .anchor .verdict { padding-bottom: 17px; display: grid; gap: 7px; }
+  .anchor .num { font-family: var(--f-display); font-size: clamp(42px, 5.5vw, 72px); line-height: .88; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+  .anchor .unit { font-family: var(--f-narrow); font-size: 13px; color: var(--muted); padding-bottom: 8px; letter-spacing: .1em; }
+  .anchor .verdict { padding-bottom: 9px; display: grid; gap: 6px; }
   .anchor .line1 { display: flex; align-items: center; gap: 9px; }
   .breath { width: 24px; height: 11px; background: var(--signal); opacity: .3; }
   html[data-busy="true"] .breath { animation: breathe 1.9s ease-in-out infinite; opacity: 1; }
   .v-word { font-family: var(--f-display); font-size: 13px; letter-spacing: .22em; text-transform: uppercase; color: var(--signal); }
   .v-sub { font-family: var(--f-mono); font-size: 11px; color: var(--muted); letter-spacing: .06em; }
 
-  /* ————————— 流 ————————— */
+  /* ————————— 流：回合分组 + 说话人 + 工具行内嵌 ————————— */
   .feed-wrap { position: relative; z-index: 2; min-height: 0; display: flex; flex-direction: column; gap: 10px; }
-  .stream { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: var(--rule-mid) transparent; display: flex; flex-direction: column; gap: 12px; }
+  .stream { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: var(--rule-mid) transparent; display: flex; flex-direction: column; gap: 18px; padding-right: 4px; }
   .stream::-webkit-scrollbar { width: 9px; } .stream::-webkit-scrollbar-thumb { background: var(--rule-mid); }
-  .entry { display: grid; gap: 5px; }
-  .entry .who { font-family: var(--f-narrow); font-size: 10px; letter-spacing: .2em; text-transform: uppercase; color: var(--muted); }
-  .entry.message .who { color: var(--ink); } .entry.thought .who { color: var(--signal); } .entry.user .who { color: var(--state); }
-  .entry .body { white-space: pre-wrap; font-size: 13px; line-height: 1.66; overflow-wrap: anywhere; }
-  .entry.thought .body { color: var(--muted); font-family: var(--f-mono); font-size: 12px; line-height: 1.6; }
-  .entry.user .body { font-family: var(--f-cjk); }
+
+  .turn { display: flex; flex-direction: column; gap: 10px; padding-bottom: 14px; border-bottom: 1px solid var(--rule); }
+  .turn:last-child { border-bottom: 0; padding-bottom: 4px; }
+
+  .entry { display: grid; gap: 6px; }
+  .entry .who { font-family: var(--f-narrow); font-size: 10px; letter-spacing: .2em; text-transform: uppercase; color: var(--muted); display: flex; align-items: baseline; gap: 10px; }
+  .entry .entry-time { font-family: var(--f-mono); font-size: 10px; letter-spacing: .06em; color: var(--dim); margin-left: auto; font-variant-numeric: tabular-nums; text-transform: none; }
+  .entry.message .who { color: var(--ink); }
+  .entry.thought .who { color: var(--signal); }
+  .entry.user .who { color: var(--state); }
+
+  .entry.user .body { font-family: var(--f-cjk); font-size: 13px; line-height: 1.65; overflow-wrap: anywhere; white-space: pre-wrap; padding: 8px 0 8px 12px; border-left: 2px solid var(--state); }
+  .entry.message .body { font-size: 13px; line-height: 1.7; overflow-wrap: anywhere; }
+  .entry.thought .body { color: var(--muted); font-family: var(--f-mono); font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; padding: 6px 0 6px 12px; border-left: 1px solid var(--rule-mid); }
+
+  .entry.message .body.md p { margin: 0 0 .65em; }
+  .entry.message .body.md p:last-child { margin-bottom: 0; }
+  .entry.message .body.md h1,
+  .entry.message .body.md h2,
+  .entry.message .body.md h3 { font-family: var(--f-narrow); font-weight: 500; letter-spacing: .12em; text-transform: uppercase; color: var(--ink); margin: .8em 0 .4em; }
+  .entry.message .body.md h1 { font-size: 15px; }
+  .entry.message .body.md h2 { font-size: 13px; }
+  .entry.message .body.md h3 { font-size: 12px; }
+  .entry.message .body.md ul { margin: .4em 0 .7em; padding-left: 1.2em; display: grid; gap: .25em; }
+  .entry.message .body.md li::marker { color: var(--signal); }
+  .entry.message .body.md code.md-inline,
+  .entry.message .body.md pre code {
+    font-family: var(--f-mono); font-size: 12px; background: var(--raised);
+    border: 1px solid var(--rule); padding: 1px 5px; color: var(--ink);
+  }
+  .entry.message .body.md pre {
+    margin: .5em 0 .75em; padding: 10px 12px; background: var(--raised);
+    border: 1px solid var(--rule); overflow-x: auto;
+  }
+  .entry.message .body.md pre code { background: none; border: 0; padding: 0; display: block; white-space: pre; line-height: 1.55; }
+  .entry.message .body.md strong { color: var(--ink); font-weight: 600; }
+  .entry.message .body.md em { color: var(--muted); }
+
+  .thought-toggle {
+    appearance: none; border: 0; background: none; cursor: pointer; padding: 0;
+    display: flex; align-items: baseline; gap: 8px; width: 100%;
+    font: inherit; color: inherit; text-align: left;
+  }
+  .thought-toggle .who { color: var(--signal); }
+  .thought-toggle .chevron { color: var(--dim); font-size: 10px; }
+  .thought-toggle:hover .who { color: var(--ink); }
+  .thought-toggle:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
+
+  .entry.tool { gap: 0; }
+  .entry.tool .tool-row {
+    display: flex; align-items: baseline; gap: 10px;
+    font-family: var(--f-mono); font-size: 12px; color: var(--muted);
+    padding: 5px 0 5px 2px; border-left: 2px solid transparent; padding-left: 10px;
+    background: linear-gradient(90deg, rgba(53,200,240,.06), transparent 55%);
+  }
+  .entry.tool .tool-title { color: var(--ink); overflow-wrap: anywhere; }
+  .entry.tool .tool-meta { color: var(--dim); font-size: 11px; }
+  .entry.tool .entry-time { margin-left: auto; }
+
   .stamp { font-family: var(--f-record); font-size: 11.5px; color: var(--dim); border-top: 1px solid var(--rule); padding-top: 9px; }
 
   /* ————————— 档案栏 ————————— */
@@ -187,10 +240,12 @@
 
   /* ————————— 底部坞 ————————— */
   .baseline { grid-area: base; background: var(--shell); border-top: 1px solid var(--rule); display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: stretch; }
-  .cmd { display: flex; align-items: center; gap: 10px; padding: 0 18px; min-width: 0; }
+  .cmd { display: flex; align-items: center; gap: 10px; padding: 0 18px; min-width: 0; position: relative; }
   .cmd .caret { color: var(--signal); font-family: var(--f-mono); }
   .cmd input { flex: 1; min-width: 0; background: none; border: 0; outline: none; color: var(--ink); font-family: var(--f-mono); font-size: 13px; caret-color: var(--signal); }
   .cmd input::placeholder { color: var(--dim); letter-spacing: .12em; }
+  /* Focus: left signal bar + native caret — no rectangular ring around the field (#6). */
+  .cmd:focus-within { box-shadow: inset 3px 0 0 var(--signal); background: rgba(53, 200, 240, 0.04); }
   .btn {
     appearance: none; background: none; cursor: pointer; color: var(--ink); border: 0; border-left: 1px solid var(--rule);
     padding: 0 20px; min-height: 52px; font-family: var(--f-narrow); font-size: 11px; letter-spacing: .2em; text-transform: uppercase;
@@ -204,7 +259,8 @@
 
   button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
   .register button:focus-visible { outline-offset: -3px; outline-color: currentColor; }
-  .cmd input:focus-visible { outline-offset: -2px; }
+  /* Input focus is the left bar on .cmd (see above), not a box ring. */
+  .cmd input:focus-visible { outline: none; }
 
   @keyframes breathe { 0%, 100% { opacity: .3 } 50% { opacity: 1 } }
   @keyframes pulse { 0%, 100% { opacity: 1 } 50% { opacity: .4 } }

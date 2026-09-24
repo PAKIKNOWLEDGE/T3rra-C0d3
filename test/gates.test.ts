@@ -10,10 +10,12 @@ describe("engine resolution", () => {
     expect(candidates).toContain("omp");
   });
 
-  it("keeps the engine a deliberate choice, not something PATH can flip", () => {
+  it("defaults to opencode first; T3RRA_ENGINE=omp is the escape hatch", () => {
     const { candidates, reason } = resolveEngineCandidates({ APPDATA: "C:\\roaming" });
     expect(reason).toBe("default-order");
-    expect(candidates[0]).toBe("omp");
+    expect(candidates[0]).toBe("opencode");
+    expect(candidates).toContain("omp");
+    expect(resolveEngineCandidates({ T3RRA_ENGINE: "omp" }).candidates[0]).toBe("omp");
   });
 
   it("lets an explicit binary override everything, including the legacy variable", () => {

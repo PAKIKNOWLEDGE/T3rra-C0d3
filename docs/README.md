@@ -1,55 +1,49 @@
 # t3rra-C0d3 工作区文档
 
-**现行真相只有一份：[`status.md`](./status.md)。** 结构与规矩看 [`../AGENTS.md`](../AGENTS.md)。
-其余文档是**带日期的证据与标准**，不承担"当前在做什么"——凡与 `status.md` 的代际表冲突，以它为准。
+**现行真相只有一份：[`status.md`](./status.md)。** 结构与规矩见 [`../AGENTS.md`](../AGENTS.md)。  
+其余文档是**带日期的证据与标准**，不承担「当前在做什么」；与 `status.md` 代际表冲突时，以它为准。
 
-> **代际（2026-09-23）**：旧实现 `t3rra-core` **已弃用**（只读参考、规则出处）；
-> **`t3rra-C0d3` 是唯一工程树**，产品代码写在这里（`app/`）。
-> `current-state.md` 与 `recommendation.md` 的"现状/策略"部分标为【仅历史】，文件头都写了取代关系。
-
----
+> **代际（2026-09-23）**：旧实现 `t3rra-core` 已弃用（只读参考）；**`t3rra-C0d3` 是唯一工程树**，产品代码在 `app/`。  
+> `current-state.md`、`recommendation.md` 的「现状/策略」部分标为【仅历史】，文件头已写取代关系。
 
 ## 导航
 
-| 文件 | 什么时候读 |
+| 文件 | 何时读 |
 | --- | --- |
-| [`status.md`](./status.md) | **先读这个**：现状、已决定的事、待拍板的开放项、事故记录（唯一允许写"决定了什么"的地方） |
-| [`adapters/opencode-acp.md`](./adapters/opencode-acp.md) | **引擎的实测映射表**：报文全集、契约级行为、有损列、未闭合项（换引擎的依据） |
-| [`visual-guide.md`](./visual-guide.md) | **做视觉优化先读这个**：硬约束（不许悬空控件 / 不许造事实 / 无头禁令 / 信道边界）与**可自由重构的视觉**分开写；含"防悬空"的真实数据对照表 |
-| [`design-contract.md`](./design-contract.md) | 界面做法记录：ark 族 · complex · 只有暗色。**§二 起都是做法、可替换**；锁定项只有族/深度/暗色与平台 |
-| [`design-critique.md`](./design-critique.md) | **界面反面清单**：旧 endfield 风格"不对味"的六个病灶，防回潮 |
-| [`design-review.md`](./design-review.md) | 范本盲审记录（三方独立）：已修/未修、契约修订、验收清单 |
-| [`blind-review-prompt.md`](./blind-review-prompt.md) · [`blind-review-result.md`](./blind-review-result.md) | 工程状态的盲审：给审阅者的 prompt 与审阅结果（含它对文档假话的清单） |
-| [`recommendation.md`](./recommendation.md) | 后端对比、建议、可证伪的下一步实验 |
-| [`backends/omp.md`](./backends/omp.md) · [`backends/opencode.md`](./backends/opencode.md) · [`backends/dsh.md`](./backends/dsh.md) | 三个候选后端的证据（omp 的 blob-broker / opencode 的接入面与代价 / dsh 的被否理由） |
-| [`current-state.md`](./current-state.md) | **2026-09-21 的快照**：上一版实现做到哪、上一版的引擎基线与不可协商的规则。**其中"现状"部分已过时，看 status.md** |
+| [`status.md`](./status.md) | **先读**：现状、已决定事项、验收清单、事故记录 |
+| [`handover.md`](./handover.md) | 运行方式、完成度三分、规矩、证据地图 |
+| [`adapters/opencode-acp.md`](./adapters/opencode-acp.md) | 引擎实测映射表：报文、契约行为、有损列、未闭合项 |
+| [`visual-guide.md`](./visual-guide.md) | 视觉优化：硬约束与可重构边界、防悬空对照表 |
+| [`design-contract.md`](./design-contract.md) | 界面做法：ark 族 · complex · 仅暗色；§二 起可替换 |
+| [`design-critique.md`](./design-critique.md) | 反面清单：endfield 风格的六个问题 |
+| [`design-review.md`](./design-review.md) | 范本三方盲审记录：已修 / 未修 / 证据冲突 |
+| [`blind-review-prompt.md`](./blind-review-prompt.md) · [`blind-review-result.md`](./blind-review-result.md) | 工程状态盲审（2026-09-23，**历史**）：问题清单与处置见 status |
+| [`recommendation.md`](./recommendation.md) | 后端对比与结论（【仅历史】部分作废，见文件头） |
+| [`backends/omp.md`](./backends/omp.md) · [`backends/opencode.md`](./backends/opencode.md) · [`backends/dsh.md`](./backends/dsh.md) | 三个候选后端的证据 |
+| [`current-state.md`](./current-state.md) | 2026-09-21 快照（【仅历史】）；现行状态看 status.md |
+| [`rules-inherited.md`](./rules-inherited.md) | 现行有效规则全集（自旧仓继承） |
 
 ## 证据分级
 
-这份调研里的每条结论都标了来源，因为本项目（t3rra-core）的规矩是
-**没验证的就说没验证**。四档：
+每条结论标来源。未验证的写未验证：
 
 | 记号 | 含义 |
 | --- | --- |
-| **【实测】** | 本机跑过，或对本地 checkout 的源码可复现 |
-| **【源码】** | 在本地 checkout 的源码里读到，但没执行 |
-| **【文档】** | 来自上游官方文档 / 发布说明 / 仓库首页 |
-| **【未验】** | 推断，没有证据。写出来是为了让它能被证伪 |
+| **【实测】** | 本机跑过，或对本地 checkout 可复现 |
+| **【源码】** | 在本地 checkout 源码中读到，未执行 |
+| **【文档】** | 上游官方文档 / 发布说明 / 仓库首页 |
+| **【未验】** | 推断，无证据；写出以便证伪 |
 
 ## 快照时点
 
-- 后端调研快照：**2026-09-21**（`backends/*` 里的 star 数、版本号都是那天的）
-- 本机 omp：`18.2.6`（`~/.bun/bin/omp.exe`）；本地 checkout 的 `git log` 顶部为
-  `62a4aa98a4`（含 `chore: bump version to 18.2.5`）
-- opencode：本机现为 **1.18.32**（2026-09-23 实测，见 [`adapters/opencode-acp.md`](./adapters/opencode-acp.md)）；
-  那份后端文档写的是当时的 `dev` 分支与 `v1.18.31` 稳定线
-- dsh：`master` 分支，**developer preview**，桌面端要求内核 `0.1.5-rc.2+`
+- 后端调研：**2026-09-21**（`backends/*` 中 star、版本号为该日快照）
+- 本机 omp：`18.2.6`（`~/.bun/bin/omp.exe`）
+- opencode：**1.18.32**（2026-09-23，见 [`adapters/opencode-acp.md`](./adapters/opencode-acp.md)）
+- dsh：`master`，**developer preview**，桌面端要求内核 `0.1.5-rc.2+`
 
-**版本号都会过时。** 重新决策前应该重跑一遍验证，而不是引用这份文档的数字。
+**版本号会过时。** 重新决策前应重跑验证，不要直接引用本文档数字。
 
-## 一句话结论（2026-09-21 的口径，已部分被 status.md 取代）
+## 一句话结论（2026-09-21 口径，已部分被 status.md 取代）
 
-不要 fork 任何别人的 desktop。上一版实现（t3rra-core）的界面与事件契约是**规则**的来源，
-真正的动作是**换引擎**：把后端从 omp 换成 opencode，架构上的边际成本 ≈ 一个 `AgentSource` 实现。
-**这条在 2026-09-23 之后要重述**：引擎决定仍然成立（且有本机实测托底），
-但"保留界面"指的是**保留契约与范本**，不是保留旧仓库的实现——见 [`status.md`](./status.md)。
+不要 fork 任何别人的 desktop。上一代的界面与事件契约是**规则**来源；真正动作是**换引擎**（omp → opencode）。  
+2026-09-23 起的修正：引擎决定不变，但「保留界面」指**保留契约与范本**，不是保留旧仓库实现——见 [`status.md`](./status.md)。

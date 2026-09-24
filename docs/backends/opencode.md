@@ -1,131 +1,106 @@
 # 候选后端 B — opencode
 
-**身份**：`github.com/anomalyco/opencode`（原 `sst/opencode`）。
+**身份**：`github.com/anomalyco/opencode`（原 `sst/opencode`）。  
 **209k star / 27.5k fork / MIT / `dev` 分支 / 约 15,770 commits。**【文档】
 
-**一句话架构**：TypeScript 写到底的 **client-server**。TUI、web UI、desktop 都只是 client，
-它们连一个 server，server 跑 agent loop、跟 LLM 通信、读写 SQLite。【文档】
+**架构**：TypeScript client-server。TUI、web UI、desktop 均为 client；server 跑 agent loop、连 LLM、读写 SQLite。【文档】
 
 ---
 
-## 三层接入面（从窄到宽）
+## 三层接入面（窄 → 宽）
 
-### 1）ACP —— 最接近 t3rra-core 现有代码
+### 1）ACP —— 最接近现有代码
 
-`opencode acp`，ACP **v1**，stdio 上换行分隔的 JSON-RPC。
-**它为一个 ACP 进程起一个私有的 OpenCode server**，不开 ACP 网络端口，
-client 关 stdin 它就退出。【文档】
+`opencode acp`，ACP **v1**，stdio 上换行分隔 JSON-RPC。  
+为 ACP 进程起私有 OpenCode server；client 关 stdin 则退出。【文档】
 
-它对 client 暴露的能力：
+暴露能力：
 
-- session 的 **create / list / load / resume / fork / close / delete**
-- **load / fork 时回放**已存消息
-- **cancel** 一个进行中的 prompt（不关 session）
-- 流式 **text / reasoning / tool calls / permission requests / usage**
-- **session options**：所有启用模型的清单、所有非 subagent 的 agent 清单；
-  会话中可以改 **model / effort / mode**
-- 向 client 广播 **available slash commands 与 skills**（`/compact` 走 compaction）【文档】
+- session：**create / list / load / resume / fork / close / delete**
+- load / fork **回放**已存消息
+- **cancel** 进行中的 prompt（不关 session）※ 本机 1.18.32 实测 **ACP 面无 `session/cancel`（-32601）**，见 `adapters/opencode-acp.md`；下条为上游文档描述
+- 流式 text / reasoning / tool / permission / usage
+- session options：模型与非 subagent agent 清单；会话中可改 **model / effort / mode**
+- 广播 slash commands 与 skills【文档】
 
-对照 t3rra-core 的 ACP 适配器：这**基本是 omp ACP 的超集**
-（omp 的 `permissions = false`、`approval` 死掉，这里 permission 是有的）。
-**但你现有的映射表是照 omp 报文写的，能不能直接吃 opencode 必须实测，不许猜。**【未验】
+对照 t3rra 的 ACP：近似 omp 超集（permission 可用）。  
+**映射表按 omp 报文编写，能否直吃 opencode 必须实测。**【未验 → 已实测，见 adapters】
 
-### 2）HTTP server —— 比 ACP 宽得多
+### 2）HTTP server —— 比 ACP 宽
 
-`opencode serve` 出 **OpenAPI 3.1 + SSE**。
-t3rra-core 的传输层（`src/agent/sources/pipe.ts`：fetch + EventSource）形状对得上。【文档】
+`opencode serve` 出 OpenAPI 3.1 + SSE。
 
-- `GET /event`、`GET /global/event`：**SSE 事件流**
-- v2 的 HTTP API：**136 个 operation / 245 个 schema**（`/api/…`）
+- `GET /event`、`GET /global/event`：SSE 事件流
+- v2 HTTP API：约 136 operation / 245 schema
 
-v2 API 里对 t3rra-core 特别相关的：
+v2 相关端点：
 
 | 能力 | 端点 | 为什么重要 |
 | --- | --- | --- |
-| 事件流 | `GET /api/event` | 单一事实来源；**契约里注明 volatile**（慢消费者会断流、断连期间事件丢失） |
-| 发消息 | `POST /api/session/{id}/prompt` | body 里 `files: PromptInput.FileAttachment[]` —— **图片是本地附件** |
-| 权限审批 | `GET/POST /api/session/{id}/permission…/reply` | **补上 omp 那个死掉的 `approval` 裁决** |
-| 表单 / elicitation | `/api/session/{id}/form`（list/get/reply/cancel） | 需要人介入的结构化提问 |
+| 事件流 | `GET /api/event` | 单一事实来源；**volatile**（慢消费者断流、断连丢事件） |
+| 发消息 | `POST /api/session/{id}/prompt` | `files` 为本地附件 |
+| 权限审批 | `/api/session/{id}/permission…/reply` | 补上 omp 死掉的 approval |
+| 表单 | `/api/session/{id}/form` | 结构化提问 |
 | diff | `GET /api/session/{id}/diff` | 每轮改了哪些文件 |
 | 回滚 | `/revert/stage`、`/revert/commit` | 回合级回退 |
-| todo | `/api/session/{id}/…`（消息类型里有） | 注意：t3rra-core 契约**禁止**把 task/plan 当一等概念，要不要接要先过溯源规则 |
-| 文件 | `GET /api/fs/read/*`、`/api/fs/list` | 渲染层要读文件时 |
+| todo | 消息类型中有 | 契约禁 task/plan 一等概念，接入前过溯源规则 |
+| 文件 | `/api/fs/*` | 渲染层读文件 |
 | 终端 | `/api/pty` + WebSocket | 真终端 |
 | 插件 RPC | `POST /api/rpc/{rpcID}/{method}` | 扩展 |
 
-**【文档】**：v2 的 server API 是**故意的破坏点**（见下），且 `/api/event` 明确标注
-"volatile by contract"——**慢消费者会溢出错流**。这对 t3rra-core 的静默判断是个真问题，
-需要设计重连与补拉策略。
+**【文档】** v2 server API 为**故意破坏点**；`/api/event` 标明 volatile——对静默判断是真问题，需重连与补拉设计。
 
 ### 3）SDK
 
-`@opencode-ai/sdk`（v1）/ `@opencode/client`（v2）。可以少手写 HTTP。
+`@opencode-ai/sdk`（v1）/ `@opencode/client`（v2）。
 
 ---
 
 ## 图片：不走上传
 
-【文档】v2 的 prompt 请求体是
-`{ text, files: PromptInput.FileAttachment[], agents, skills, metadata, delivery, resume }`。
-图片是**随 prompt 一起交的本地附件**。
+【文档】v2 prompt：`{ text, files: PromptInput.FileAttachment[], … }`。图片为随 prompt 的本地附件。  
+包列表无 omp 式 blob-broker / uploader / 图床子系统；配置仅 `media.image.auto_resize`（本地缩放）。
 
-opencode 的包列表里**没有** omp 那种 `blob-broker` / uploader / 图床子系统。
-v2 配置里图片相关的是 `media.image.auto_resize`（**本地缩放**，不是上传）。
-
-→ **你在 omp 上遇到的"图片要发布到第三方"的痛点，在这个后端上不存在。**【文档】
-（保留：我没穷举它的全部代码，只核了包列表与 prompt 契约。）
+→ **omp「图片发布到第三方」的痛点在此后端不存在。**【文档】  
+（未穷举全部代码，已核包列表与 prompt 契约。）
 
 ---
 
-## 桌面端：和你想要的几乎一样，但它放弃了 Tauri
+## 桌面端：结构类似，但放弃了 Tauri
 
-**【文档】** 桌面端结构：
+【文档】
 
-- **SolidJS** 前端，核心在共享包 **`@opencode-ai/app`**（web 和 desktop 共用），
-  桌面壳是一层**薄封装**，还带一个 **sidecar**（打包的 CLI，负责跑本地 server）。
-- 壳**最初是 Tauri 2**，**现已重写为 Electron**，Tauri 版即将停发。
+- SolidJS 前端，核心在 **`@opencode-ai/app`**（web/desktop 共用）；桌面为薄壳 + **sidecar**（打包 CLI 跑本地 server）。
+- 壳**最初 Tauri 2，现已重写为 Electron**，Tauri 版将停发。
 
-官方作者（Brendonovich）给的理由，逐条：
+作者（Brendonovich）给出的理由：
 
-1. **Tauri 在 macOS / Linux 上用 WebKit**，渲染性能比 Chromium 差，
-   且**样式上有细微不一致**，直接伤害"跨平台体验一致"这个目标。
-2. **跑 CLI** 影响启动时间，且**在 Windows 上偶发启动失败**。
-3. 叠加他们想从 **Bun 迁到 Node**，于是"让 server 直接跑在 Electron 自带的 Node 进程里"
-   变得很香。
+1. **macOS / Linux 上 Tauri 用 WebKit**，性能与样式一致性差于 Chromium。
+2. 跑 CLI 影响启动，且 **Windows 上偶发启动失败**。
+3. 同步从 Bun 迁 Node，「server 跑在 Electron 自带 Node 进程」更合适。
 
-他们的自我澄清也很关键：*"这不是说 Tauri/Electron 谁更好更快，只是 Electron 更契合我们的场景"*，
-并且 Tauri 版**保留期间**两者并存。
+自我澄清：*"不是说 Tauri/Electron 谁更好，只是 Electron 更契合他们的场景。"*
 
-### 对 t3rra-core 的 Tauri 决定的含义
+### 对 Tauri 决定的含义
 
-- t3rra-core 的 `AGENTS.md` §六写着 **"Electron 完全不可接受"**。这条与上面的证据冲突，
-  但**冲突没有想象中大**：
-  - 你**只在 Windows** 上跑 → Tauri 用 **WebView2（Chromium 内核）**，
-    他们踩的 WebKit 坑**对你不成立**。
-  - t3rra-core 已定 **"Rust 只做受监管的管道，不认识事件词汇"**，
-    这正是 Tauri 最合适的用法（不把逻辑塞进 Rust）。
-  - 他们的第 1 条理由在 **macOS / Linux**；第 2 条（sidecar 启动）是 Windows 上的真坑，
-    值得你在写 Tauri 外壳时**提前设计"引擎探 PATH → 已知位置 → 手填"的回退**
-    （t3rra-core 的 `NOTES.md` 已经踩到并写明了）。
-- **结论**：**若只出 Windows，Tauri 决定成立；若将来要出 mac/Linux 包，这就是已知坑。**
+- 旧仓 `AGENTS.md` 写 **Electron 完全不可接受**——与上游选择冲突，但：
+  - **只在 Windows** → Tauri 用 **WebView2（Chromium）**，WebKit 坑不成立。
+  - 「Rust 只做管道」正是 Tauri 合适用法。
+  - 第 2 条（sidecar 启动）Windows 上真实：写 Tauri 时提前做「PATH → 已知位置 → 手填」回退。
+- **结论：只出 Windows → Tauri 成立；将来 mac/Linux → 已知坑。**
 
 ---
 
 ## 版本与稳定性
 
-- **v1 稳定线**：`v1.18.31`（2026-09-14 时点）。
-- **v2 已可用**，含**三处故意的破坏性变更**：
-  1. **插件**用新 API（V1 插件实现**不能**在 V2 跑）；
-  2. **server API 与 clients 换新契约**（绑 HTTP API 的集成必须迁移）；
-  3. **终端 client 配置**从分层 `tui.json(c)` 改为单一 `cli.json`（自动迁移）。
-- 有**正式迁移指南**，且"已支持的 V1 行为应继续工作，坏了算兼容性 bug"。
-- **判断**：它也会破，但**破在大版本上、有 guide、有稳定线**——
-  这跟 omp 的日常破坏、和 dsh 的"持续破坏"是两个量级。
+- **v1 稳定线**：`v1.18.31`（2026-09-14 快照）。
+- **v2 可用**，三处故意破坏：插件新 API；server API 与 clients 换契约；终端 client 配置 `tui.json(c)` → 单一 `cli.json`。
+- 有正式迁移指南；已支持的 v1 行为应继续工作。
+- **判断**：会破，但破在大版本、有 guide、有稳定线——好于 omp 日常破坏与 dsh 持续破坏。
 
-## 生态：自定义 UI 是**已被证明**的模式
+## 生态
 
-【文档】已有多个基于 opencode API 的第三方客户端/桌面端
-（如 `jazarie2/opencode-gui`、`Paseo` 等）。**"给 opencode 做自己的前端"不是没人走过的路。**
+已有第三方客户端（如 `jazarie2/opencode-gui`、Paseo 等）。**「自建 opencode 前端」不是无人走过的路。**
 
 ## License
 

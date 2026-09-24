@@ -3,15 +3,17 @@
  * else (rules-inherited §一.1) — no wire objects, no engine knowledge.
  *
  * What it will NOT do, on purpose:
- *  - invent a number: the anchor shows elapsed seconds from the clock; the silence judgement
- *    (×8 slow / ×25 stalled) is not implemented yet, so the comparison line says so out loud
- *    (`SILENCE NOT MEASURED`) instead of guessing at a plausible-looking verdict;
+ *  - invent a number: elapsed seconds and the silence report (×8 / ×25 from cadence.ts)
+ *    come from the clock and measured samples only — no baseline means an explicit
+ *    "not established", never a plausible-looking guess;
  *  - build a control it cannot honour: mode/model/effort come from the runtime's own list,
  *    and the input stays disabled until a session actually exists.
  */
 
-import type { ConsoleView } from "../view/derive.ts";
+import type { ConsoleView, StreamEntry } from "../view/derive.ts";
 import { toSeconds, type SilenceReport } from "../view/cadence.ts";
+import { renderMarkdown } from "./markdown.ts";
+import { groupTurns } from "./turns.ts";
 
 const need = <T extends HTMLElement>(id: string): T => {
   const node = document.getElementById(id);
@@ -112,6 +114,17 @@ export const mountConsole = (): ConsoleHandles => {
   let optionHandler: (optionId: string, value: string) => void = () => {};
   let optionSignature = "";
   let facts: SessionFacts = {};
+  /** Thought blocks the operator collapsed — keyed by stream key, survives re-render. */
+  const collapsedThoughts = new Set<string>();
+
+  const formatStamp = (atMs: number): string => {
+    if (atMs <= 0) return "";
+    const date = new Date(atMs);
+    const hh = String(date.getHours()).padStart(2, "0");
+    const mm = String(date.getMinutes()).padStart(2, "0");
+    const ss = String(date.getSeconds()).padStart(2, "0");
+    return `${hh}:${mm}:${ss}`;
+  };
 
   /**
    * Options are rendered by what the runtime says they are, not by an id whitelist:
@@ -173,7 +186,16 @@ export const mountConsole = (): ConsoleHandles => {
     if (view.tools.length === 0) {
       const row = document.createElement("div");
       row.className = "row";
-      row.innerHTML = '<span class="k"><span class="diamond d-none">◇</span> none</span><span class="v">no tool call yet</span>';
+      const k = document.createElement("span");
+      k.className = "k";
+      const d = document.createElement("span");
+      d.className = "diamond d-none";
+      d.textContent = "◇";
+      k.append(d, document.createTextNode(" none"));
+      const v = document.createElement("span");
+      v.className = "v";
+      v.textContent = "no tool call yet";
+      row.append(k, v);
       tools.append(row);
       return;
     }
@@ -195,15 +217,80 @@ export const mountConsole = (): ConsoleHandles => {
     }
   };
 
-  const renderEntry = (type: "message" | "thought" | "user", text: string): HTMLElement => {
+  const renderToolRow = (entry: Extract<StreamEntry, { type: "tool" }>): HTMLElement => {
     const wrap = document.createElement("div");
-    wrap.className = `entry ${type}`;
+    wrap.className = "entry tool";
+    const done = /complete|success|done/i.test(entry.status);
+    const line = document.createElement("div");
+    line.className = "tool-row";
+    const mark = document.createElement("span");
+    mark.className = `diamond ${done ? "d-done" : "d-run"}`;
+    mark.textContent = "◆";
+    const title = document.createElement("span");
+    title.className = "tool-title";
+    title.textContent = entry.title === "" ? "(untitled tool)" : entry.title;
+    const meta = document.createElement("span");
+    meta.className = "tool-meta";
+    meta.textContent = `${entry.hint === "" ? "tool" : entry.hint} · ${entry.status === "" ? "NO STATUS" : entry.status}`;
+    const when = document.createElement("span");
+    when.className = "entry-time";
+    when.textContent = formatStamp(entry.atMs);
+    line.append(mark, title, meta, when);
+    wrap.append(line);
+    return wrap;
+  };
+
+  const renderEntry = (entry: StreamEntry): HTMLElement => {
+    if (entry.type === "tool") return renderToolRow(entry);
+
+    const wrap = document.createElement("div");
+    wrap.className = `entry ${entry.type}`;
+
+    if (entry.type === "thought") {
+      const toggle = document.createElement("button");
+      toggle.type = "button";
+      toggle.className = "thought-toggle";
+      const open = !collapsedThoughts.has(entry.key);
+      toggle.setAttribute("aria-expanded", String(open));
+      const label = document.createElement("span");
+      label.className = "who";
+      label.textContent = "reasoning";
+      const chevron = document.createElement("span");
+      chevron.className = "chevron";
+      chevron.textContent = open ? "▾" : "▸";
+      const chars = document.createElement("span");
+      chars.className = "entry-time";
+      chars.textContent = `${entry.text.length} ch · ${formatStamp(entry.atMs)}`;
+      toggle.append(label, chevron, chars);
+      toggle.addEventListener("click", () => {
+        const nowCollapsed = !collapsedThoughts.has(entry.key);
+        if (nowCollapsed) collapsedThoughts.add(entry.key);
+        else collapsedThoughts.delete(entry.key);
+        toggle.setAttribute("aria-expanded", String(!nowCollapsed));
+        const bodyEl = wrap.querySelector(".body");
+        if (bodyEl instanceof HTMLElement) bodyEl.hidden = nowCollapsed;
+        const chev = toggle.querySelector(".chevron");
+        if (chev !== null) chev.textContent = nowCollapsed ? "▸" : "▾";
+      });
+      const body = document.createElement("div");
+      body.className = "body md";
+      body.hidden = collapsedThoughts.has(entry.key);
+      body.append(renderMarkdown(entry.text));
+      wrap.append(toggle, body);
+      return wrap;
+    }
+
     const who = document.createElement("div");
     who.className = "who";
-    who.textContent = type === "thought" ? "reasoning" : type === "user" ? "operator" : "agent";
+    who.textContent = entry.type === "user" ? "operator" : "agent";
+    const time = document.createElement("span");
+    time.className = "entry-time";
+    time.textContent = formatStamp(entry.atMs);
+    who.append(time);
     const body = document.createElement("div");
-    body.className = "body";
-    body.textContent = text;
+    body.className = entry.type === "user" ? "body" : "body md";
+    if (entry.type === "user") body.textContent = entry.text;
+    else body.append(renderMarkdown(entry.text));
     wrap.append(who, body);
     return wrap;
   };
@@ -418,7 +505,12 @@ export const mountConsole = (): ConsoleHandles => {
 
       const pinned = stream.scrollTop + stream.clientHeight >= stream.scrollHeight - 24;
       stream.replaceChildren();
-      for (const entry of view.stream) stream.append(renderEntry(entry.type, entry.text));
+      for (const turn of groupTurns(view.stream)) {
+        const block = document.createElement("section");
+        block.className = "turn";
+        for (const entry of turn.items) block.append(renderEntry(entry));
+        stream.append(block);
+      }
       if (pinned) stream.scrollTop = stream.scrollHeight;
 
       renderTools(view);

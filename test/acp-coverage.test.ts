@@ -86,7 +86,10 @@ describe("translation specifics", () => {
       translateLine(line({ sessionUpdate: "agent_thought_chunk", messageId: "m1", content: { type: "text", text: "thinking" } })),
     ].flatMap((result) => result.events);
     const view = reduceAll(events);
-    expect(view.stream.map((entry) => `${entry.type}:${entry.text}`)).toEqual(["message:half done", "thought:thinking"]);
+    expect(view.stream.map((entry) => (entry.type === "tool" ? `tool:${entry.title}` : `${entry.type}:${entry.text}`))).toEqual([
+      "message:half done",
+      "thought:thinking",
+    ]);
   });
 
   it("uses the tool title as identity, not the kind", () => {

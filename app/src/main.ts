@@ -88,11 +88,18 @@ const logEvents = (events: readonly AgentEvent[]): void => {
 };
 const silenceNow = (): SessionFacts => ({ silence: report(cadence, facts.busy === true, Date.now()) });
 
+/** First line of the instruction, whitespace-collapsed, capped — stage title only. */
+const shortTopic = (text: string): string => {
+  const line = (text.split(/\r?\n/)[0] ?? text).replace(/\s+/g, " ").trim();
+  const limit = 36;
+  return line.length <= limit ? line : `${line.slice(0, limit - 1)}…`;
+};
+
 const apply = (events: readonly AgentEvent[]): void => {
   logEvents(events);
   const now = Date.now();
   for (const event of events) {
-    view = reduceView(view, event);
+    view = reduceView(view, event, now);
     const phase = phaseOf(event);
     if (phase !== null) cadence = observeActivity(cadence, phase, now, event.kind);
     if (event.kind === "prompt.ended") cadence = endTurn(cadence);
@@ -213,7 +220,9 @@ ui.onSubmit((text) => {
   }
   // The operator's own line is a fact of the operator, not a claim about the runtime.
   apply([{ kind: "message.appended", from: { method: "operator", variant: undefined }, role: "user", messageId: `local-${nextId}`, text }]);
-  if (facts.topic === undefined) patch({ topic: text });   // the stage title comes from the instruction
+  // Stage title = a short task theme, never the whole instruction (a long prompt in h1
+  // blows the stage open and pushes the feed off-screen). Full text lives in the stream.
+  if (facts.topic === undefined) patch({ topic: shortTopic(text) });
   cadence = beginWaiting(cadence, Date.now());
   patch({ busy: true, phase: "[ RUNNING ]", phaseNote: "STREAMING · INTERRUPT NOT AVAILABLE OVER ACP (session/cancel: METHOD NOT FOUND)", ...silenceNow() });
   send("session/prompt", { sessionId: view.sessionId, prompt: [{ type: "text", text }] });
