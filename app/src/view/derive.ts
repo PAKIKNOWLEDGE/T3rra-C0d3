@@ -11,7 +11,7 @@
  * so the conversation view can interleave tool rows without inventing sequence.
  */
 
-import type { AgentEvent, AgentEventKind, ConfigOption, SessionSummary } from "../contract/events.ts";
+import type { AgentEvent, AgentEventKind, ConfigOption, PendingPermission, SessionSummary } from "../contract/events.ts";
 
 export type BlockName = "session" | "options" | "stream" | "tools" | "transport";
 
@@ -46,7 +46,8 @@ export interface ConsoleView {
   readonly tools: readonly ToolEntry[];
   readonly sessions: readonly SessionSummary[];
   readonly stopReason: string | undefined;
-  readonly permissionSummary: string | undefined;
+  /** Live approval waiting on the operator; undefined when none (or already resolved). */
+  readonly permission: PendingPermission | undefined;
   readonly unmapped: number;
   readonly exited: { readonly code: number | null; readonly signal: string | null } | undefined;
   readonly from: Readonly<Record<BlockName, readonly AgentEventKind[]>>;
@@ -60,7 +61,7 @@ export const VIEW_BLOCKS: readonly BlockName[] = ["session", "options", "stream"
  * can be checked against both the contract's full kind list and the captured traffic.
  */
 export const BLOCK_PROVENANCE: Readonly<Record<BlockName, readonly AgentEventKind[]>> = {
-  session: ["session.opened", "sessions.updated", "sessions.removed", "permission.requested", "prompt.ended"],
+  session: ["session.opened", "sessions.updated", "sessions.removed", "permission.requested", "permission.resolved", "prompt.ended"],
   options: ["options.updated"],
   stream: ["message.appended", "thought.appended", "tool.started", "tool.updated"],
   tools: ["tool.started", "tool.updated"],
@@ -74,7 +75,7 @@ export const emptyView = (): ConsoleView => ({
   tools: [],
   sessions: [],
   stopReason: undefined,
-  permissionSummary: undefined,
+  permission: undefined,
   unmapped: 0,
   exited: undefined,
   from: BLOCK_PROVENANCE,
@@ -198,7 +199,13 @@ export const reduceView = (view: ConsoleView, event: AgentEvent, nowMs?: number)
     }
 
     case "permission.requested":
-      return { ...view, permissionSummary: event.summary };
+      return {
+        ...view,
+        permission: { requestId: event.requestId, summary: event.summary, options: event.options },
+      };
+
+    case "permission.resolved":
+      return view.permission?.requestId === event.requestId ? { ...view, permission: undefined } : view;
 
     case "prompt.ended":
       return { ...view, stopReason: event.stopReason };

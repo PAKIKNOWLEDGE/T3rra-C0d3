@@ -77,7 +77,8 @@ const describe = (event: AgentEvent): string => {
     case "thought.appended": return `reasoning · ${event.text.length} chars`;
     case "tool.started": return `${event.title === "" ? "(untitled)" : event.title} · ${event.hint === "" ? "tool" : event.hint}`;
     case "tool.updated": return `${event.toolCallId} · ${event.status === "" ? "no status" : event.status}`;
-    case "permission.requested": return event.summary;
+    case "permission.requested": return `${event.summary || event.requestId} · ${event.options.length} option(s)`;
+    case "permission.resolved": return `${event.requestId} → ${event.optionId}`;
     case "prompt.ended": return `stop reason ${event.stopReason}`;
     case "engine.stderr": return event.text;
     case "engine.exited": return `code ${event.code ?? "—"} · signal ${event.signal ?? "—"}`;
@@ -368,6 +369,37 @@ ui.onSessionDelete((sessionId) => {
     })
     .catch((error: unknown) => {
       patch({ lastError: String(error).slice(0, 160), phase: "[ READY ]", phaseNote: "DELETE FAILED" });
+    });
+});
+
+/**
+ * Approval reply is a JSON-RPC *response* to the engine's request, not a new request —
+ * same id, `result.outcome` shape proven by traces/opencode/*-prompt.jsonl.
+ */
+ui.onPermissionSelect((requestId, optionId) => {
+  if (!engineReady("APPROVAL")) return;
+  const rawId: number | string = /^\d+$/.test(requestId) ? Number(requestId) : requestId;
+  void transport
+    .write(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: rawId,
+        result: { outcome: { outcome: "selected", optionId } },
+      }),
+    )
+    .then(() => {
+      apply([
+        {
+          kind: "permission.resolved",
+          from: { method: "permission.reply", variant: undefined },
+          requestId,
+          optionId,
+        },
+      ]);
+      patch({ phase: "[ READY ]", phaseNote: `APPROVAL · ${optionId.toUpperCase()}` });
+    })
+    .catch((error: unknown) => {
+      patch({ lastError: String(error).slice(0, 160), phase: "[ APPROVAL ]", phaseNote: "REPLY FAILED · TRY AGAIN" });
     });
 });
 

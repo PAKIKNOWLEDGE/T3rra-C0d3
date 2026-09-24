@@ -79,6 +79,15 @@
     },
     "sessionsList": {
       "static": "container only; rows (LOAD / DEL) are created by the renderer from session/list"
+    },
+    "approvalBar": {
+      "static": "approval strip; option buttons are created from session/request_permission.options"
+    },
+    "approvalSummary": {
+      "static": "text only; shows the pending request summary"
+    },
+    "approvalActions": {
+      "static": "container only; buttons created from the engine's permission options"
     }
   }
 }

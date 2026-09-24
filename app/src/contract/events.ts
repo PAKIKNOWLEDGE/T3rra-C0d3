@@ -44,6 +44,20 @@ export interface SessionSummary {
   readonly cwd: string;
 }
 
+/** One engine-supplied permission choice. Rendered as given — no id whitelist. */
+export interface PermissionOption {
+  readonly optionId: string;
+  readonly kind: string;
+  readonly name: string;
+}
+
+/** A live `session/request_permission` waiting for the operator. */
+export interface PendingPermission {
+  readonly requestId: string;
+  readonly summary: string;
+  readonly options: readonly PermissionOption[];
+}
+
 export type AgentEvent =
   | { readonly kind: "session.opened"; readonly from: EventSource; readonly sessionId: string }
   | { readonly kind: "sessions.updated"; readonly from: EventSource; readonly sessions: readonly SessionSummary[] }
@@ -53,7 +67,8 @@ export type AgentEvent =
   | { readonly kind: "thought.appended"; readonly from: EventSource; readonly messageId: string; readonly text: string }
   | { readonly kind: "tool.started"; readonly from: EventSource; readonly toolCallId: string; readonly title: string; readonly hint: string }
   | { readonly kind: "tool.updated"; readonly from: EventSource; readonly toolCallId: string; readonly status: string }
-  | { readonly kind: "permission.requested"; readonly from: EventSource; readonly requestId: string; readonly summary: string }
+  | { readonly kind: "permission.requested"; readonly from: EventSource; readonly requestId: string; readonly summary: string; readonly options: readonly PermissionOption[] }
+  | { readonly kind: "permission.resolved"; readonly from: EventSource; readonly requestId: string; readonly optionId: string }
   | { readonly kind: "prompt.ended"; readonly from: EventSource; readonly stopReason: string }
   | { readonly kind: "engine.stderr"; readonly from: EventSource; readonly text: string }
   | { readonly kind: "engine.exited"; readonly from: EventSource; readonly code: number | null; readonly signal: string | null }
@@ -74,6 +89,7 @@ export const EVENT_KINDS: readonly AgentEventKind[] = [
   "tool.started",
   "tool.updated",
   "permission.requested",
+  "permission.resolved",
   "prompt.ended",
   "engine.stderr",
   "engine.exited",

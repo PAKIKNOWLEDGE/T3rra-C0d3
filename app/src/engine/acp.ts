@@ -12,7 +12,7 @@
  *    directory listing as `read`, so `kind` is not trustworthy as a display hint.
  */
 
-import type { AgentEvent, ConfigOption, EventSource } from "../contract/events.ts";
+import type { AgentEvent, ConfigOption, EventSource, PermissionOption } from "../contract/events.ts";
 
 export interface TranslationResult {
   readonly events: readonly AgentEvent[];
@@ -120,10 +120,26 @@ export const translateLine = (line: string): TranslationResult => {
   }
 
   if (message.method === "session/request_permission") {
-    const params = message.params as { toolCall?: { title?: string; kind?: string } } | undefined;
+    const params = message.params as {
+      toolCall?: { title?: string; kind?: string };
+      options?: readonly { optionId?: unknown; kind?: unknown; name?: unknown }[];
+    } | undefined;
     const summary = [params?.toolCall?.kind, params?.toolCall?.title].filter((part) => typeof part === "string" && part !== "").join(" · ");
+    const options: PermissionOption[] = (params?.options ?? []).map((raw) => ({
+      optionId: String(raw.optionId ?? ""),
+      kind: String(raw.kind ?? ""),
+      name: String(raw.name ?? raw.optionId ?? ""),
+    })).filter((option) => option.optionId !== "");
     return {
-      events: [{ kind: "permission.requested", from: { method: "session/request_permission", variant: undefined }, requestId: String(message.id ?? ""), summary }],
+      events: [
+        {
+          kind: "permission.requested",
+          from: { method: "session/request_permission", variant: undefined },
+          requestId: String(message.id ?? ""),
+          summary,
+          options,
+        },
+      ],
       isResponse: false,
     };
   }

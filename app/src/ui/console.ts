@@ -55,6 +55,7 @@ export interface ConsoleHandles {
   onSessionsRefresh(handler: () => void): void;
   onSessionLoad(handler: (sessionId: string, cwd: string) => void): void;
   onSessionDelete(handler: (sessionId: string) => void): void;
+  onPermissionSelect(handler: (requestId: string, optionId: string) => void): void;
   setView(view: "process" | "events"): void;
   renderEvents(entries: readonly EventLogEntry[]): void;
   setLink(state: "ok" | "down"): void;
@@ -89,6 +90,9 @@ export const mountConsole = (): ConsoleHandles => {
   const sessionsList = need("sessionsList");
   const sessionsRefresh = need<HTMLButtonElement>("sessionsRefresh");
   const sessionsNew = need<HTMLButtonElement>("sessionsNew");
+  const approvalBar = need("approvalBar");
+  const approvalSummary = need("approvalSummary");
+  const approvalActions = need("approvalActions");
   const pSession = need("pSession");
   const pStarted = need("pStarted");
   const pStop = need("pStop");
@@ -122,8 +126,10 @@ export const mountConsole = (): ConsoleHandles => {
   let sessionLoadHandler: (sessionId: string, cwd: string) => void = () => {};
   let sessionDeleteHandler: (sessionId: string) => void = () => {};
   let sessionCreateHandler: () => void = () => {};
+  let permissionSelectHandler: (requestId: string, optionId: string) => void = () => {};
   let optionSignature = "";
   let sessionSignature = "";
+  let permissionSignature = "";
   let facts: SessionFacts = {};
   /** Thought blocks the operator collapsed — keyed by stream key, survives re-render. */
   const collapsedThoughts = new Set<string>();
@@ -404,6 +410,38 @@ export const mountConsole = (): ConsoleHandles => {
     }
   };
 
+  const renderApproval = (view: ConsoleView): void => {
+    const pending = view.permission;
+    const signature =
+      pending === undefined
+        ? "none"
+        : `${pending.requestId}#${pending.options.map((option) => option.optionId).join(",")}`;
+    if (signature === permissionSignature) return;
+    permissionSignature = signature;
+
+    if (pending === undefined) {
+      approvalBar.hidden = true;
+      approvalSummary.textContent = "NOT STATED";
+      approvalActions.replaceChildren();
+      return;
+    }
+
+    approvalBar.hidden = false;
+    approvalSummary.textContent = pending.summary === "" ? pending.requestId : pending.summary;
+    approvalActions.replaceChildren();
+    // Render exactly the engine's options — no whitelist (rule: only what runtime declares).
+    for (const option of pending.options) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.textContent = option.name === "" ? option.optionId : option.name;
+      const kind = option.kind.toLowerCase();
+      if (kind.includes("reject") || kind.includes("deny")) button.className = "reject";
+      else if (kind.includes("allow")) button.className = "allow";
+      button.addEventListener("click", () => permissionSelectHandler(pending.requestId, option.optionId));
+      approvalActions.append(button);
+    }
+  };
+
   const renderStage = (): void => {
     const busy = facts.busy === true;
     const silence = facts.silence;
@@ -528,6 +566,9 @@ export const mountConsole = (): ConsoleHandles => {
     onSessionDelete(handler): void {
       sessionDeleteHandler = handler;
     },
+    onPermissionSelect(handler): void {
+      permissionSelectHandler = handler;
+    },
     setView(view): void {
       applyView(view);
     },
@@ -600,7 +641,12 @@ export const mountConsole = (): ConsoleHandles => {
       metaMode.textContent = mode === undefined ? "NOT DECLARED" : mode.currentValue;
 
       pStop.textContent = view.stopReason ?? "NOT REPORTED";
-      pPermission.textContent = view.permissionSummary ?? "NOT REQUESTED";
+      pPermission.textContent =
+        view.permission !== undefined
+          ? view.permission.summary === ""
+            ? `WAITING · ${view.permission.requestId}`
+            : view.permission.summary
+          : "NOT REQUESTED";
       pUnmapped.textContent = String(view.unmapped);
       pProvenance.textContent = Object.entries(view.from)
         .map(([block, kinds]) => `${block}:${kinds.length}`)
@@ -629,6 +675,7 @@ export const mountConsole = (): ConsoleHandles => {
       renderTools(view);
       renderOptions(view);
       renderSessions(view);
+      renderApproval(view);
     },
   };
 };

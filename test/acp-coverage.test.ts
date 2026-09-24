@@ -105,8 +105,53 @@ describe("translation specifics", () => {
   });
 
   it("surfaces a permission request as its own fact, not as a notice", () => {
-    const { events } = translateLine(JSON.stringify({ jsonrpc: "2.0", id: 7, method: "session/request_permission", params: { toolCall: { kind: "edit", title: "Write file" } } }));
-    expect(events[0]).toMatchObject({ kind: "permission.requested", requestId: "7", summary: "edit · Write file" });
+    const { events } = translateLine(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: 7,
+        method: "session/request_permission",
+        params: {
+          toolCall: { kind: "edit", title: "Write file" },
+          options: [
+            { optionId: "once", kind: "allow_once", name: "Allow once" },
+            { optionId: "always", kind: "allow_always", name: "Always allow" },
+            { optionId: "reject", kind: "reject_once", name: "Reject" },
+          ],
+        },
+      }),
+    );
+    expect(events[0]).toMatchObject({
+      kind: "permission.requested",
+      requestId: "7",
+      summary: "edit · Write file",
+      options: [
+        { optionId: "once", kind: "allow_once", name: "Allow once" },
+        { optionId: "always", kind: "allow_always", name: "Always allow" },
+        { optionId: "reject", kind: "reject_once", name: "Reject" },
+      ],
+    });
+    const view = reduceAll(events);
+    expect(view.permission?.requestId).toBe("7");
+    expect(view.permission?.options).toHaveLength(3);
+  });
+
+  it("clears the pending approval when the operator answers", () => {
+    const requested = translateLine(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: 9,
+        method: "session/request_permission",
+        params: { toolCall: { kind: "edit", title: "x" }, options: [{ optionId: "reject", kind: "reject_once", name: "Reject" }] },
+      }),
+    ).events;
+    const resolved: AgentEvent = {
+      kind: "permission.resolved",
+      from: { method: "permission.reply", variant: undefined },
+      requestId: "9",
+      optionId: "reject",
+    };
+    const view = reduceAll([...requested, resolved]);
+    expect(view.permission).toBeUndefined();
   });
 
   it("reads the stop reason off a prompt response and nothing else", () => {
