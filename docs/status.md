@@ -20,10 +20,11 @@ A 的载体 `current-state.md`、B 的载体 `recommendation.md` 已标【仅历
 | # | 问题 | 状态 | 备注 |
 | --- | --- | --- | --- |
 | 1 | 中断（HALT）没有 | 待做 | ACP 无 `session/cancel`（实测 `-32601`）；HTTP 有 `POST /session/{id}/abort` → 需 HTTP 通道。当前真中断仅 `RESTART ⟲` |
-| 2 | 会话列表 + 网页端删除 | **已修 · 仍待主人目视** | 整行=LOAD，`×`=删除；**打开页面不再自动 `session/new`**（曾一次打开就堆垃圾会话）。删除走引擎 HTTP；本机存储 `%USERPROFILE%\.local\share\opencode\`（主数据 `opencode.db`，另有 `storage/session_diff/ses_*.json`——**删后 diff 残留是否清掉【未验】**） |
+| 2 | 会话列表 + 网页端删除 | **已修 · 主人已过** | 整行=LOAD、`×`=删除；不自动建会话；左轨/右栏/空态三处青色主操作新建；删除走引擎 HTTP；存储 `%USERPROFILE%\.local\share\opencode\`（`opencode.db` + `storage/session_diff/`——**diff 是否清掉【未验】**）。**2026-09-23 目视通过**（含 NEW 显眼化） |
 | 2b | 打开即建垃圾会话 | **已修** | handshake 只 `initialize` + `session/list`；首条指令才 `session/new`（queued）；删当前会话不再自动再开 |
 | 2c | BUILD/PLAN 点了像死 | **已修待目视** | 点击即乐观切换 `aria-pressed` 并本地改 `currentValue`，再发 `set_config_option`；缺会话时写 LAST ERROR |
-| 2d | 舞台标题仍可能撑爆 | **已修** | `#topic` 单行 nowrap+ellipsis + `h1 max-height`；`shortTopic` 截到 28 字 |
+| 2d | 舞台标题仍可能撑爆 | **已修** | `#topic` 单行 nowrap+ellipsis + `shortTopic` 28 字 |
+| 2e | 输入框中文字体回退 | **已修** | `--f-mono` = IBM Plex Mono → HarmonyOS Sans SC → Consolas（`39fc7f3`） |
 | 3 | `02 EVENTS` 死按键 | **已修** | 真视图：原始事件日志 |
 | 4 | `＋ NEW` 不明/死按键 | **已修** | 真动作：`session/new`（id 变更才清空旧流） |
 | 5 | reasoning 不能收起 | **已修 · 主人已过** | thought 块可真折叠；对话区整批目视 **2026-09-23 通过** |
@@ -34,8 +35,8 @@ A 的载体 `current-state.md`、B 的载体 `recommendation.md` 已标【仅历
 | 10 | 审批无界面 | 待做 | 事件可收；三档选项渲成按钮并回包。默认配置下引擎不问（需 `permission.*="ask"`） |
 | 11 | 闸门假阴性 | **已修** | 控件扫描 + `app/ui-manifest.json` 清单制（缺分类 / 陈旧 / 无引用 → 构建失败） |
 
-**计数**：已修/已实现 **9**（#2–#9、#11），**待做 2**（#1 中断、#10 审批）。**#2 待主人目视勾选。**  
-**优先级**：**#2 待验收** → **#10 审批** → **#1 中断**（HTTP 通道已具备，可共用 `POST /abort`）。  
+**计数**：已修 **9**（#2–#9、#11；**#2、#5–#9 主人已过**），**待做 2**（#1 中断、#10 审批）。  
+**优先级**：**#10 审批 → #1 中断**（HTTP 通道已具备，可共用 `POST /abort`）。  
 **汇报要求**：「已知未做」必须与「已完成」并列；清单未勾完前，「闸全绿」不作为交付证据。
 
 ## 范式更新（2026-09-23，死键二次回潮后）
