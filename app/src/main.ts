@@ -59,6 +59,8 @@ const phaseOf = (event: AgentEvent): ActivityPhase | null => {
 let cadence: Cadence = startCadence();
 let eventLog: EventLogEntry[] = [];
 const sessionStartedAt = { at: Date.now() };
+/** Target of an in-flight session/load — the response may omit sessionId. */
+let pendingLoadId: string | undefined;
 
 /** A one-line, factual description of an event for the EVENTS view. */
 const describe = (event: AgentEvent): string => {
@@ -127,12 +129,29 @@ const refreshSessions = (): void => {
 
 /** Responses carry facts the notifications do not: the session id and the option menu. */
 const handleResponse = (id: number, method: string, result: unknown): boolean => {
-  const mapping = mapResponse(method, result);
+  let mapping = mapResponse(method, result);
+  if (method === "session/load") {
+    // Replay can arrive with no sessionId on the response; the operator asked for pendingLoadId.
+    const openId = mapping.sessionId ?? pendingLoadId;
+    pendingLoadId = undefined;
+    if (openId !== undefined) {
+      const events = [...mapping.events];
+      if (!events.some((event) => event.kind === "session.opened")) {
+        events.push({
+          kind: "session.opened",
+          from: { method: "session/load.response", variant: undefined },
+          sessionId: openId,
+        });
+      }
+      mapping = { ...mapping, sessionId: openId, events };
+    }
+  }
   if (mapping.agentName !== undefined) patch({ engine: mapping.agentName });
   if (mapping.sessionId !== undefined) {
     if (view.sessionId !== undefined && view.sessionId !== mapping.sessionId) {
-      // A different session: the stream and the log belonged to the old one.
-      view = emptyView();
+      // A different session: stream/log belonged to the old one; keep the sessions panel list.
+      const sessions = view.sessions;
+      view = { ...emptyView(), sessions };
       eventLog = [];
       sessionStartedAt.at = Date.now();
     }
@@ -228,7 +247,20 @@ ui.onSessionsRefresh(() => {
 
 ui.onSessionLoad((sessionId, cwd) => {
   if (facts.binary === undefined) return;
-  patch({ phase: "[ LOADING ]", phaseNote: `session/load ${sessionId.slice(0, 12)}…`, busy: false, topic: undefined });
+  pendingLoadId = sessionId;
+  // Move the current-session rail immediately so the marker does not wait on the response.
+  if (view.sessionId !== sessionId) {
+    const sessions = view.sessions;
+    view = { ...emptyView(), sessions, sessionId };
+    ui.render(view);
+  }
+  patch({
+    sessionId,
+    phase: "[ LOADING ]",
+    phaseNote: `session/load ${sessionId.slice(0, 12)}…`,
+    busy: false,
+    topic: undefined,
+  });
   ui.setView("process");
   ui.setCommandEnabled(false);
   ui.setPlaceholder("REPLAYING HISTORY");
@@ -237,7 +269,6 @@ ui.onSessionLoad((sessionId, cwd) => {
     cwd: cwd === "" ? facts.cwd ?? "." : cwd,
     mcpServers: [],
   });
-  refreshSessions();
 });
 
 ui.onSessionDelete((sessionId) => {

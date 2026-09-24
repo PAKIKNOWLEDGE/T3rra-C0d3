@@ -314,7 +314,7 @@ export const mountConsole = (): ConsoleHandles => {
    */
   const renderSessions = (view: ConsoleView): void => {
     const signature = view.sessions.map((item) => item.sessionId).join("|");
-    // Always re-render when the open session changes so the "current" marker tracks it.
+    // Re-render when the list *or* the open session changes so the rail follows LOAD.
     const current = view.sessionId ?? "";
     const full = `${signature}#${current}`;
     if (full === sessionSignature) return;
@@ -329,9 +329,15 @@ export const mountConsole = (): ConsoleHandles => {
       return;
     }
     for (const item of view.sessions) {
+      const isCurrent = item.sessionId === view.sessionId;
+      // The whole row is the LOAD affordance; × is delete only (does not load).
       const row = document.createElement("div");
-      row.className = item.sessionId === view.sessionId ? "session-row current" : "session-row";
+      row.className = isCurrent ? "session-row current" : "session-row";
       row.dataset["sessionId"] = item.sessionId;
+      row.setAttribute("role", "button");
+      row.setAttribute("tabindex", "0");
+      row.setAttribute("aria-label", `Load session ${item.title !== "" ? item.title : item.sessionId}`);
+      if (isCurrent) row.setAttribute("aria-current", "true");
 
       const title = document.createElement("div");
       title.className = "session-title";
@@ -346,27 +352,44 @@ export const mountConsole = (): ConsoleHandles => {
       when.className = "session-when";
       when.textContent = item.updatedAt === "" ? "NOT STATED" : item.updatedAt;
 
-      const actions = document.createElement("div");
-      actions.className = "session-actions";
-
-      const load = document.createElement("button");
-      load.type = "button";
-      load.textContent = "LOAD";
-      load.addEventListener("click", () => sessionLoadHandler(item.sessionId, item.cwd));
+      const hint = document.createElement("div");
+      hint.className = "session-hint";
+      hint.textContent = isCurrent ? "OPEN · CLICK TO RELOAD" : "CLICK TO OPEN";
 
       const del = document.createElement("button");
       del.type = "button";
-      del.className = "danger";
-      del.textContent = "DEL";
-      del.addEventListener("click", () => {
+      del.className = "session-del";
+      del.textContent = "×";
+      del.setAttribute("aria-label", `Delete session ${item.sessionId}`);
+      del.addEventListener("click", (event) => {
+        event.stopPropagation();
         const label = item.title !== "" ? item.title : item.sessionId;
         if (window.confirm(`Delete session?\n${label}\n\nThis cannot be undone from this UI.`)) {
           sessionDeleteHandler(item.sessionId);
         }
       });
 
-      actions.append(load, del);
-      row.append(title, when, actions);
+      const load = (): void => {
+        if (isCurrent) {
+          // Re-open the same session (replay again) — still a real action.
+          sessionLoadHandler(item.sessionId, item.cwd);
+          return;
+        }
+        sessionLoadHandler(item.sessionId, item.cwd);
+      };
+      row.addEventListener("click", load);
+      row.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          load();
+        }
+      });
+
+      const body = document.createElement("div");
+      body.className = "session-body";
+      body.append(title, when, hint);
+
+      row.append(body, del);
       sessionsList.append(row);
     }
   };

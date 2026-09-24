@@ -20,7 +20,7 @@ A 的载体 `current-state.md`、B 的载体 `recommendation.md` 已标【仅历
 | # | 问题 | 状态 | 备注 |
 | --- | --- | --- | --- |
 | 1 | 中断（HALT）没有 | 待做 | ACP 无 `session/cancel`（实测 `-32601`）；HTTP 有 `POST /session/{id}/abort` → 需 HTTP 通道。当前真中断仅 `RESTART ⟲` |
-| 2 | 会话列表 + 网页端删除 | **已实现 · 待主人目视** | 右栏 `[ SESSIONS ]`：ACP `session/list` 列表、LOAD 走 `session/load`、DEL 走 HTTP `DELETE /session/{id}`（桥起 `opencode serve` 透传）。**待主人点验后勾选** |
+| 2 | 会话列表 + 网页端删除 | **已修交互 · 仍待主人目视** | 整行点击=LOAD，`×`=删除；LOAD 后青条立即跟随（含 load 响应无 sessionId 时用 pendingLoadId）。首版蓝条不跟随、LOAD 按钮反直觉——主人 2026-09-23 驳回后已改 |
 | 3 | `02 EVENTS` 死按键 | **已修** | 真视图：原始事件日志 |
 | 4 | `＋ NEW` 不明/死按键 | **已修** | 真动作：`session/new`（id 变更才清空旧流） |
 | 5 | reasoning 不能收起 | **已修 · 主人已过** | thought 块可真折叠；对话区整批目视 **2026-09-23 通过** |
