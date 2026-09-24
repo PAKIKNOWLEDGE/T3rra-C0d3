@@ -27,6 +27,12 @@
 2. **界面**：**ark 族 · complex · 仅暗色**。色板、字体、构图、几何、动效、验收方式见 [`docs/design-contract.md`](./docs/design-contract.md)。
 3. **反面参照**：endfield 风格的六个问题见 [`docs/design-critique.md`](./docs/design-critique.md)。
 4. **外壳**：Tauri（Windows / WebView2 成立；mac/Linux 的 WebKit 问题见 `docs/backends/opencode.md`）。**Electron 不可接受**（仓库主人规定）。
+5. **中断（HALT）走 stdio `session/cancel` notification**，不走 HTTP `POST /session/{id}/abort`。  
+   依据【实测】：`traces/opencode/opencode-acp-2026-09-24T10-34-39-594Z-cancel-notification.jsonl` —— 无 `id` 的 notification 在 53ms 内使在途 `session/prompt` 回 `stopReason:"cancelled"`。  
+   旧结论「ACP 无中断能力」出自一个方法错误的探针（把 notification 当 request 发，得 `-32601`），据此建的 `acp --port` + 按路径分流结构已于 29f8ea0 删除。  
+   HTTP `abort` 另有假成功问题【源码 + 实测】：不校验会话存在、恒返回 `true`。**不得把 HTTP 2xx 当作中断生效的证据。**
+6. **产品目的 = 自用**（仓库主人 2026-09-24 确认）。因此「opencode 官方已有 app 与 TUI」不构成放弃理由；差异化对自用非必要条件。  
+   派生的取舍顺序：**视觉层优先于后端存续**——界面必须留，大不了换引擎。故此条与 §三 的视觉层依赖闸同时生效。
 
 ## 三、工作规矩
 
@@ -36,7 +42,15 @@
   其余视觉内容允许重构；`docs/design-contract.md` §二 起是「当前做法」，不是戒律。  
   悬空控件的机检在 `npm run check:app`。
 - **无头浏览器禁用**。不跑 puppeteer / playwright / jsdom，不跑 ark-ui 的 audit/capture。  
-  界面交付 = 可打开的路径 + 3–5 条「看什么」，由仓库主人目视验收。**不得声称已看过渲染结果。**
+  界面交付 = 可打开的路径 + 3–5 条「看什么」，由仓库主人目视验收。**不得声称已看过渲染结果。**  
+  **唯一例外（2026-09-24 登记）**：`test/**` 内允许用 jsdom 对 DOM **结构**做断言（节点、嵌套、属性），因为该禁令的成因是「代理声称看过渲染」，断言 `renderMarkdown` 产出 `<p>` 不属于该风险面。  
+  边界：`app/` 产品代码与 `spike/` 探针**禁用** jsdom；且任何代理**不得**以 jsdom 结果作为「渲染已验收」的叙事——结构断言 ≠ 观感验收。
+- **证据链必须可复现**（2026-09-24）。入库的每条 `traces/opencode/*.jsonl` 都要能由仓库内的 `spike/` 脚本重跑得到。  
+  教训：`traces/opencode/*-halt-in-process.jsonl` 里的 `NOT_STOPPED_IN_WINDOW` 与 `idleSignal` 在现行 `spike/probe-halt-in-process.mjs` 中根本产生不出来（其 verdict 只有三个分支），  
+  即该 trace 出自一个已丢失的脚本版本——**它的 verdict 字符串不可再作任何方向的解读**。  
+  另一条：只有 TEMP 目录里的一次性脚本产出的 trace，等于没有证据。
+- **视觉层不得依赖引擎层**，由 `npm run check:boundary` 机检（`app/src/ui/**`、`app/src/view/**` 不得 import `app/src/engine/**`、`app/plugins/**`、`app/src/main.ts`）。  
+  这条是本仓库floor 的机械化形式：「界面必须留，大不了换后端」只有在依赖方向被强制时才是真的。
 - **结论必须标证据等级**：【实测】/【源码】/【文档】/【未验】（见 `docs/README.md`）。未验证就写未验证。
 - **声称完成必须有工具输出支撑。** 仓库主人验收清单见 `docs/status.md`——清单未勾完之前，「闸全绿」不作为交付证据。
 - **汇报时，「已知未做 / 只做了一半」必须与「已完成」并列**，不得只写在注释或 tooltip 里。
