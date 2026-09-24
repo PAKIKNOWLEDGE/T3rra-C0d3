@@ -50,4 +50,4 @@ npm run dev           # 起 vite，界面在其打印的地址上
 
 ## 关于代际与命名
 
-工程名 / 仓库名用 `t3rra`。这里是**重写后的 opencode 后端一代**；`t3rra-core` 仓库 URL 是历史地址。上一代（omp + endfield 风格）的产物已被视为废料，其结论只在 `docs/` 里作为反面参照和证据保留。界面品牌名是另一件事，不在本 README 决定。
+仓库名 `T3rra-C0d3`。这里是**重写后的 opencode 后端一代**；旧名 `t3rra-core` URL 有 GitHub 自动重定向。上一代（omp + endfield 风格）的产物已被视为废料，其结论只在 `docs/` 里作为反面参照和证据保留。界面品牌名是另一件事，不在本 README 决定。
