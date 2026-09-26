@@ -2,12 +2,16 @@
  * The renderer. Reads a `ConsoleView` plus a small set of *real* session facts, and nothing
  * else (rules-inherited §一.1) — no wire objects, no engine knowledge.
  *
+ * Visual language: ARK family of the 3NDM1N15T4T0R design language (docs/design.md). Every
+ * component of the gold-standard specimen is mapped to a real fact here; where the specimen
+ * showed a number we do not have (context ring, diff counts, plan), nothing is drawn.
+ *
  * What it will NOT do, on purpose:
- *  - invent a number: elapsed seconds and the silence report (×8 / ×25 from cadence.ts)
- *    come from the clock and measured samples only — no baseline means an explicit
- *    "not established", never a plausible-looking guess;
+ *  - invent a number: counts are counted from the stream, times come from the clock, and the
+ *    silence report (×8 / ×25 from cadence.ts) is shown only once it is established;
  *  - build a control it cannot honour: mode/model/effort come from the runtime's own list,
- *    and the input stays disabled until a session actually exists.
+ *    work-order cards are not clickable (the contract carries no tool output to open), and
+ *    the input stays disabled until the engine is up.
  */
 
 import type { ConsoleView, StreamEntry } from "../view/derive.ts";
@@ -22,7 +26,6 @@ const need = <T extends HTMLElement>(id: string): T => {
   return node as T;
 };
 
-/** Facts about the run that come from the process and the clock, not from the event stream. */
 /** One line of the raw event log: the EVENTS view shows translated events, verbatim. */
 export interface EventLogEntry {
   readonly at: string;
@@ -30,6 +33,7 @@ export interface EventLogEntry {
   readonly detail: string;
 }
 
+/** Facts about the run that come from the process and the clock, not from the event stream. */
 export interface SessionFacts {
   readonly engine?: string | undefined;
   readonly sessionId?: string | undefined;
@@ -67,34 +71,82 @@ export interface ConsoleHandles {
   render(view: ConsoleView): void;
 }
 
-const escapeText = (text: string): string => text;
+/** Engine-declared tool kind → card category. The kind is the engine's claim, shown verbatim
+ *  on the card; the colour only repeats that claim (acp.ts: kind is not trustworthy as a
+ *  *title*, which is why the title stays the card's name). */
+const KIND: Readonly<Record<string, { readonly cls: string; readonly zh: string; readonly icon: string }>> = {
+  execute: { cls: "k-exec", zh: "终端", icon: "i-term" },
+  read: { cls: "k-read", zh: "读取", icon: "i-read" },
+  search: { cls: "k-read", zh: "搜索", icon: "i-read" },
+  fetch: { cls: "k-read", zh: "抓取", icon: "i-read" },
+  edit: { cls: "k-edit", zh: "编辑", icon: "i-edit" },
+  delete: { cls: "k-edit", zh: "删除", icon: "i-edit" },
+  move: { cls: "k-edit", zh: "移动", icon: "i-edit" },
+  think: { cls: "k-other", zh: "思考", icon: "i-think" },
+};
+const kindOf = (hint: string): { readonly cls: string; readonly zh: string; readonly icon: string } =>
+  KIND[hint.toLowerCase()] ?? { cls: "k-other", zh: "工具", icon: "i-tool" };
+
+type ToolState = "run" | "done" | "fail" | "other";
+const toolState = (status: string): ToolState => {
+  if (/fail|error|reject|cancel/i.test(status)) return "fail";
+  if (/complete|success|done/i.test(status)) return "done";
+  if (/run|pending|progress/i.test(status) || status === "") return "run";
+  return "other";
+};
+
+const LEVEL_ZH: Readonly<Record<string, string>> = { nominal: "正常", slow: "偏慢", stalled: "停滞" };
+
+const pad2 = (n: number): string => String(n).padStart(2, "0");
+const clock = (seconds: number): string => `${pad2(Math.floor(seconds / 60))}:${pad2(seconds % 60)}`;
+
+const el = <K extends keyof HTMLElementTagNameMap>(tag: K, className?: string, text?: string): HTMLElementTagNameMap[K] => {
+  const node = document.createElement(tag);
+  if (className !== undefined) node.className = className;
+  if (text !== undefined) node.textContent = text;
+  return node;
+};
+
+const SVG_NS = "http://www.w3.org/2000/svg";
+const icon = (id: string, className = "i"): SVGSVGElement => {
+  const svg = document.createElementNS(SVG_NS, "svg");
+  svg.setAttribute("class", className);
+  svg.setAttribute("aria-hidden", "true");
+  const use = document.createElementNS(SVG_NS, "use");
+  use.setAttribute("href", `#${id}`);
+  svg.append(use);
+  return svg;
+};
 
 export const mountConsole = (): ConsoleHandles => {
+  const root = document.documentElement;
+  const pageTitle = need("pageTitle");
+  const pageTitleZh = need("pageTitleZh");
+  const sessionCode = need("sessionCode");
+  const topic = need("topic");
+  const resOrders = need("resOrders");
+  const resTime = need("resTime");
   const engine = need("engine");
-  const sessionId = need("sessionId");
   const linkLabel = need("linkLabel");
+  const metaModel = need("metaModel");
   const phase = need("phase");
   const phaseNote = need("phaseNote");
-  const topic = need("topic");
-  const hollowLine = need("hollowLine");
-  const metaEngine = need("metaEngine");
-  const metaModel = need("metaModel");
-  const metaMode = need("metaMode");
-  const anchorNum = need("anchorNum");
-  const anchorUnit = need("anchorUnit");
-  const verdict = need("verdict");
-  const compare = need("compare");
   const stream = need("stream");
-  const stamp = need("stamp");
   const options = need("options");
   const modes = need("modes");
   const tools = need("tools");
   const sessionsList = need("sessionsList");
+  const sessionsCount = need("sessionsCount");
   const sessionsRefresh = need<HTMLButtonElement>("sessionsRefresh");
-  const sessionsNew = need<HTMLButtonElement>("sessionsNew");
   const approvalBar = need("approvalBar");
   const approvalSummary = need("approvalSummary");
   const approvalActions = need("approvalActions");
+  const approvalWait = need("approvalWait");
+  const approvalId = need("approvalId");
+  const statPrompts = need("statPrompts");
+  const statReplies = need("statReplies");
+  const statTools = need("statTools");
+  const statThoughts = need("statThoughts");
   const pSession = need("pSession");
   const pStarted = need("pStarted");
   const pStop = need("pStop");
@@ -118,9 +170,8 @@ export const mountConsole = (): ConsoleHandles => {
   const viewEventsButton = need<HTMLButtonElement>("viewEvents");
   const newSessionButton = need<HTMLButtonElement>("newSession");
   const transportPanel = need("transportPanel");
-  const registerOperator = need<HTMLButtonElement>("regOperator");
-  const registerExpert = need<HTMLButtonElement>("regExpert");
-  const input = need<HTMLInputElement>("promptInput");
+  const infoToggle = need<HTMLButtonElement>("infoToggle");
+  const input = need<HTMLTextAreaElement>("promptInput");
   const submit = need<HTMLButtonElement>("promptSubmit");
   const halt = need<HTMLButtonElement>("halt");
   const restart = need<HTMLButtonElement>("restart");
@@ -128,6 +179,7 @@ export const mountConsole = (): ConsoleHandles => {
   let optionHandler: (optionId: string, value: string) => void = () => {};
   let sessionLoadHandler: (sessionId: string, cwd: string) => void = () => {};
   let sessionDeleteHandler: (sessionId: string) => void = () => {};
+  /** Set by `onSessionCreate`; the empty states' CREATE buttons reuse this one action. */
   let sessionCreateHandler: () => void = () => {};
   /** Set by `onSessionsRefresh`; reused by the RETRY button the failed-list state creates. */
   let sessionsRefreshHandler: () => void = () => {};
@@ -137,24 +189,29 @@ export const mountConsole = (): ConsoleHandles => {
   let permissionSignature = "";
   let haltHandler: (() => void) | undefined;
   let facts: SessionFacts = {};
+  let lastView: ConsoleView | undefined;
+  /** When the pending approval first reached the screen — the clock behind 「已等待」. */
+  let permissionSince: number | undefined;
+  /**
+   * Turn outcome, per turn. `stopReason` / `promptError` persist in the view across turns, so
+   * a banner keyed on them alone would show last turn's halt under this turn. We snapshot both
+   * when a turn starts and only speak about values that changed since.
+   */
+  let outcomeBaseline: { stop: string | undefined; error: string | undefined } | undefined;
   /** Thought blocks the operator collapsed — keyed by stream key, survives re-render. */
   const collapsedThoughts = new Set<string>();
 
   const formatStamp = (atMs: number): string => {
     if (atMs <= 0) return "";
     const date = new Date(atMs);
-    const hh = String(date.getHours()).padStart(2, "0");
-    const mm = String(date.getMinutes()).padStart(2, "0");
-    const ss = String(date.getSeconds()).padStart(2, "0");
-    return `${hh}:${mm}:${ss}`;
+    return `${pad2(date.getHours())}:${pad2(date.getMinutes())}`;
   };
 
   /**
    * Options are rendered by what the runtime says they are, not by an id whitelist:
    *   - `category === "mode"` is a small closed set that decides how the instruction is read,
-   *     so it becomes the dock's paired chips (next to the prompt, where the mode matters);
-   *   - everything else (`model`, `effort`, …) is a setting and stays in the dossier.
-   * A dropdown for two choices would have been the app drifting away from the design.
+   *     so it becomes the dock's linked segment buttons (next to the prompt, where it matters);
+   *   - everything else (`model`, `effort`, …) is a setting and stays in the right column.
    */
   const renderOptions = (view: ConsoleView): void => {
     const signature = view.options.map((option) => `${option.category}/${option.id}=${option.currentValue}`).join("|");
@@ -166,35 +223,29 @@ export const mountConsole = (): ConsoleHandles => {
 
     modes.replaceChildren();
     for (const option of modality) {
-      for (const choice of option.choices) {
-        const chip = document.createElement("button");
+      option.choices.forEach((choice, index) => {
+        if (index > 0) modes.append(el("i"));
+        const chip = el("button", undefined, choice.name === "" ? choice.value : choice.name);
         chip.type = "button";
-        chip.textContent = choice.name === "" ? choice.value : choice.name.toUpperCase();
         chip.setAttribute("aria-pressed", String(choice.value === option.currentValue));
         chip.addEventListener("click", () => optionHandler(option.id, choice.value));
         modes.append(chip);
-      }
+      });
     }
 
     options.replaceChildren();
     if (settings.length === 0) {
-      const empty = document.createElement("div");
-      empty.className = "empty";
-      empty.textContent = "NOT DECLARED YET";
-      options.append(empty);
+      options.append(el("div", "empty", "引擎尚未声明"));
       return;
     }
     for (const option of settings) {
-      const label = document.createElement("label");
-      const caption = document.createElement("span");
-      caption.className = "micro";
-      caption.textContent = `${option.name} · ${option.category}`;
-      const select = document.createElement("select");
+      const label = el("label");
+      const caption = el("span", undefined, `${option.name} · ${option.category}`);
+      const select = el("select");
       select.setAttribute("aria-label", option.name);
       for (const choice of option.choices) {
-        const node = document.createElement("option");
+        const node = el("option", undefined, choice.name);
         node.value = choice.value;
-        node.textContent = choice.name;
         if (choice.value === option.currentValue) node.selected = true;
         select.append(node);
       }
@@ -204,169 +255,261 @@ export const mountConsole = (): ConsoleHandles => {
     }
   };
 
+  const stateText = (status: string, state: ToolState): string => {
+    if (state === "done") return "完成";
+    if (state === "fail") return `失败 · ${status}`;
+    if (state === "run") return facts.busy === true ? "运行中" : "未收到结束";
+    return status;
+  };
+
+  /** Right-column index of every work order in the session. */
   const renderTools = (view: ConsoleView): void => {
     tools.replaceChildren();
     if (view.tools.length === 0) {
-      const row = document.createElement("div");
-      row.className = "row";
-      const k = document.createElement("span");
-      k.className = "k";
-      const d = document.createElement("span");
-      d.className = "diamond d-none";
-      d.textContent = "◇";
-      k.append(d, document.createTextNode(" none"));
-      const v = document.createElement("span");
-      v.className = "v";
-      v.textContent = "no tool call yet";
-      row.append(k, v);
-      tools.append(row);
+      tools.append(el("li", "none", "还没有工单"));
       return;
     }
-    for (const tool of view.tools) {
-      const done = /complete|success|done/i.test(tool.status);
-      const row = document.createElement("div");
-      row.className = "row hover";
-      const key = document.createElement("span");
-      key.className = "k";
-      const diamond = document.createElement("span");
-      diamond.className = `diamond ${done ? "d-done" : "d-run"}`;
-      diamond.textContent = done ? "◆" : "◆";
-      key.append(diamond, document.createTextNode(` ${escapeText(tool.title || "(untitled tool)")}`));
-      const value = document.createElement("span");
-      value.className = "v";
-      value.textContent = `${tool.hint === "" ? "tool" : tool.hint} · ${tool.status === "" ? "NO STATUS" : tool.status}`;
-      row.append(key, value);
+    view.tools.forEach((tool, index) => {
+      const state = toolState(tool.status);
+      const kind = kindOf(tool.hint);
+      const row = el("li", state === "fail" ? "k-fail" : kind.cls);
+      row.append(
+        el("span", "no", pad2(index + 1)),
+        el("span", "p", tool.title === "" ? "（无标题工具）" : tool.title),
+        el("span", "s", stateText(tool.status, state)),
+      );
       tools.append(row);
+    });
+  };
+
+  /** One work order = one base-station card (DESIGN-LANGUAGE §5.2). Not a button: there is no
+   *  tool output in the contract to open, and a card that opens to nothing is a dead control. */
+  const renderStation = (entry: Extract<StreamEntry, { type: "tool" }>, ordinal: number): HTMLElement => {
+    const state = toolState(entry.status);
+    const kind = kindOf(entry.hint);
+    const card = el("div", `st ${state === "fail" ? "k-fail" : kind.cls}${state === "run" ? " is-run" : ""}`);
+    card.append(icon(kind.icon, "i wm"));
+    const name = el("span", "nm");
+    const bars = el("span", "bars");
+    bars.append(el("i"), el("i"), el("i"));
+    name.append(el("span", "tx", entry.title === "" ? "（无标题工具）" : entry.title), bars);
+    const status = el("span", "ss", stateText(entry.status, state));
+    if (state === "run" && facts.busy === true) {
+      const arrows = el("span", "arr");
+      arrows.append(el("i", undefined, "▶"), el("i", undefined, "▶"), el("i", undefined, "▶"));
+      status.append(arrows);
     }
+    const declared = el("span", "en kd", `${kind.zh} · ${entry.hint === "" ? "kind 未声明" : entry.hint} · ${formatStamp(entry.atMs)}`);
+    const number = el("span", "n");
+    number.append(el("small", undefined, "#"), document.createTextNode(pad2(ordinal)));
+    card.append(name, status, declared, number);
+    return card;
   };
 
-  const renderToolRow = (entry: Extract<StreamEntry, { type: "tool" }>): HTMLElement => {
-    const wrap = document.createElement("div");
-    wrap.className = "entry tool";
-    const done = /complete|success|done/i.test(entry.status);
-    const line = document.createElement("div");
-    line.className = "tool-row";
-    const mark = document.createElement("span");
-    mark.className = `diamond ${done ? "d-done" : "d-run"}`;
-    mark.textContent = "◆";
-    const title = document.createElement("span");
-    title.className = "tool-title";
-    title.textContent = entry.title === "" ? "(untitled tool)" : entry.title;
-    const meta = document.createElement("span");
-    meta.className = "tool-meta";
-    meta.textContent = `${entry.hint === "" ? "tool" : entry.hint} · ${entry.status === "" ? "NO STATUS" : entry.status}`;
-    const when = document.createElement("span");
-    when.className = "entry-time";
-    when.textContent = formatStamp(entry.atMs);
-    line.append(mark, title, meta, when);
-    wrap.append(line);
-    return wrap;
-  };
-
-  const renderEntry = (entry: StreamEntry): HTMLElement => {
-    if (entry.type === "tool") return renderToolRow(entry);
-
-    const wrap = document.createElement("div");
-    wrap.className = `entry ${entry.type}`;
+  const renderMessage = (entry: Extract<StreamEntry, { type: "message" | "user" | "thought" }>, ordinal: number): HTMLElement => {
+    if (entry.type === "user") {
+      const article = el("article", "msg order");
+      const header = el("header");
+      const stamp = el("span", "seg2");
+      stamp.append(el("span", "a", "已发出"), el("span", "b", formatStamp(entry.atMs) || "—"));
+      header.append(el("span", "tag-black", `指令 ${pad2(ordinal)}`), el("span", "spacer"), stamp);
+      article.append(header, el("div", "body", entry.text));
+      return article;
+    }
 
     if (entry.type === "thought") {
-      const toggle = document.createElement("button");
+      const article = el("article", "msg thought");
+      const toggle = el("button", "thought-toggle");
       toggle.type = "button";
-      toggle.className = "thought-toggle";
       const open = !collapsedThoughts.has(entry.key);
       toggle.setAttribute("aria-expanded", String(open));
-      const label = document.createElement("span");
-      label.className = "who";
-      label.textContent = "reasoning";
-      const chevron = document.createElement("span");
-      chevron.className = "chevron";
-      chevron.textContent = open ? "▾" : "▸";
-      const chars = document.createElement("span");
-      chars.className = "entry-time";
-      chars.textContent = `${entry.text.length} ch · ${formatStamp(entry.atMs)}`;
-      toggle.append(label, chevron, chars);
+      const chevron = el("span", "chev", open ? "▾ 收起" : "▸ 展开");
+      toggle.append(el("span", "chip-light", "思考"), el("span", "en", `Reasoning · ${entry.text.length} 字`), chevron, el("span", "spacer"));
+      const time = el("time", undefined, formatStamp(entry.atMs));
+      toggle.append(time);
+      const body = el("div", "body prose");
+      body.hidden = !open;
+      body.append(renderMarkdown(entry.text));
       toggle.addEventListener("click", () => {
         const nowCollapsed = !collapsedThoughts.has(entry.key);
         if (nowCollapsed) collapsedThoughts.add(entry.key);
         else collapsedThoughts.delete(entry.key);
         toggle.setAttribute("aria-expanded", String(!nowCollapsed));
-        const bodyEl = wrap.querySelector(".body");
-        if (bodyEl instanceof HTMLElement) bodyEl.hidden = nowCollapsed;
-        const chev = toggle.querySelector(".chevron");
-        if (chev !== null) chev.textContent = nowCollapsed ? "▸" : "▾";
+        body.hidden = nowCollapsed;
+        chevron.textContent = nowCollapsed ? "▸ 展开" : "▾ 收起";
       });
-      const body = document.createElement("div");
-      body.className = "body md";
-      body.hidden = collapsedThoughts.has(entry.key);
-      body.append(renderMarkdown(entry.text));
-      wrap.append(toggle, body);
-      return wrap;
+      const header = el("header");
+      header.append(toggle);
+      article.append(header, body);
+      return article;
     }
 
-    const who = document.createElement("div");
-    who.className = "who";
-    who.textContent = entry.type === "user" ? "operator" : "agent";
-    const time = document.createElement("span");
-    time.className = "entry-time";
-    time.textContent = formatStamp(entry.atMs);
-    who.append(time);
-    const body = document.createElement("div");
-    body.className = entry.type === "user" ? "body" : "body md";
-    if (entry.type === "user") body.textContent = entry.text;
-    else body.append(renderMarkdown(entry.text));
-    wrap.append(who, body);
-    return wrap;
+    const article = el("article", "msg reply");
+    const header = el("header");
+    header.append(
+      el("span", "chip-light", facts.engine ?? "引擎"),
+      el("span", "en", "回复"),
+      el("span", "spacer"),
+      el("time", undefined, formatStamp(entry.atMs)),
+    );
+    const body = el("div", "body prose");
+    body.append(renderMarkdown(entry.text));
+    article.append(header, body);
+    return article;
   };
 
-  /**
-   * The stage's anchor and verdict, derived only from what was measured.
-   *  - busy with a baseline: the anchor is the quiet seconds and the verdict is the level;
-   *  - busy without one: the seconds are still a fact, but the verdict says `Not Established`
-   *    (rule 7: fewer than three samples means no judgement, and the hard limit is a backstop,
-   *    never a measurement);
-   *  - not busy: the anchor falls back to the session clock, and the comparison line says the
-   *    silence is not measured at all, rather than pretending the session is stalling.
-   */
-  /** One LOAD row. Shared by the normal list and the failed-list view, which must stay loadable. */
-  const sessionRow = (item: SessionSummary, openSessionId: string | undefined): HTMLElement => {
-    const isCurrent = item.sessionId === openSessionId;
-    // The whole row is the LOAD affordance; × is delete only (does not load).
-    const row = document.createElement("div");
-    row.className = isCurrent ? "session-row current" : "session-row";
+  /** Consecutive tool entries of one turn become one 「工单」 section of station cards. */
+  const renderWorks = (cards: readonly HTMLElement[], first: number, last: number): HTMLElement => {
+    const section = el("section", "works");
+    const cap = el("div", "cap");
+    cap.append(
+      el("span", "chip-sec", "工单"),
+      el("span", "en", first === last ? `Work order · #${pad2(first)}` : `Work orders · #${pad2(first)}–#${pad2(last)}`),
+      el("span", "line"),
+    );
+    const tiles = el("div", "tiles");
+    tiles.append(...cards);
+    section.append(cap, tiles);
+    return section;
+  };
+
+  const createButton = (): HTMLButtonElement => {
+    const button = el("button", "bluetile");
+    button.type = "button";
+    button.id = "streamCreate";
+    button.append(el("span", "wm", "NEW"), document.createTextNode("新建会话"), icon("i-newsess"));
+    button.addEventListener("click", () => sessionCreateHandler());
+    return button;
+  };
+
+  /** Empty record: say what is true and offer the next step (AGENTS §五.4: no dead-end panel). */
+  const renderVoid = (view: ConsoleView): HTMLElement => {
+    const box = el("div", "void");
+    if (view.sessionId === undefined) {
+      box.append(
+        el("div", "h", "还没有打开会话"),
+        el("div", "p", "从左栏选一个会话继续，或者新建一个。也可以直接在下方输入指令，发送时会自动开一个新会话。"),
+        createButton(),
+      );
+    } else {
+      box.append(el("div", "h", "会话已打开"), el("div", "p", "这里还没有记录。在下方下达第一条指令。"));
+    }
+    return box;
+  };
+
+  /** What ended the turn, if this turn produced such a fact. Never carried over from a past turn. */
+  const renderOutcome = (view: ConsoleView): HTMLElement | undefined => {
+    if (facts.busy === true || outcomeBaseline === undefined) return undefined;
+    if (view.promptError !== undefined && view.promptError !== outcomeBaseline.error) {
+      const line = el("div", "haltline", "本轮失败");
+      line.append(el("span", "en", view.promptError.slice(0, 160)));
+      return line;
+    }
+    if (view.stopReason === "cancelled" && view.stopReason !== outcomeBaseline.stop) {
+      const line = el("div", "haltline", "本轮已被你中止");
+      line.append(el("span", "en", "引擎已确认 cancelled"));
+      return line;
+    }
+    return undefined;
+  };
+
+  const renderStream = (view: ConsoleView): void => {
+    const pinned = processView.scrollTop + processView.clientHeight >= processView.scrollHeight - 24;
+    stream.replaceChildren();
+
+    if (view.stream.length === 0) {
+      stream.append(renderVoid(view));
+    }
+
+    let prompts = 0;
+    let orders = 0;
+    for (const turn of groupTurns(view.stream)) {
+      let cards: HTMLElement[] = [];
+      let first = 0;
+      const flush = (): void => {
+        if (cards.length === 0) return;
+        stream.append(renderWorks(cards, first, orders));
+        cards = [];
+      };
+      for (const entry of turn.items) {
+        if (entry.type === "tool") {
+          orders += 1;
+          if (cards.length === 0) first = orders;
+          cards.push(renderStation(entry, orders));
+          continue;
+        }
+        flush();
+        if (entry.type === "user") prompts += 1;
+        stream.append(renderMessage(entry, prompts));
+      }
+      flush();
+    }
+
+    const outcome = renderOutcome(view);
+    if (outcome !== undefined) stream.append(outcome);
+    if (view.linkDown !== undefined) {
+      const line = el("div", "haltline", "字节通道已断开");
+      line.append(el("span", "en", `${view.linkDown} · 按右下「重启」恢复`));
+      stream.append(line);
+    }
+    if (pinned) processView.scrollTop = processView.scrollHeight;
+  };
+
+  const renderCounts = (view: ConsoleView): void => {
+    const count = (type: StreamEntry["type"]): number => view.stream.filter((entry) => entry.type === type).length;
+    statPrompts.textContent = pad2(count("user"));
+    statReplies.textContent = pad2(count("message"));
+    statTools.textContent = pad2(count("tool"));
+    statThoughts.textContent = pad2(count("thought"));
+    resOrders.textContent = pad2(view.tools.length);
+  };
+
+  /** One session tile. The whole tile is the LOAD affordance; × is delete only. */
+  const sessionRow = (item: SessionSummary, ordinal: number, view: ConsoleView): HTMLElement => {
+    const isCurrent = item.sessionId === view.sessionId;
+    const row = el("div", "sess tile");
     row.dataset["sessionId"] = item.sessionId;
     row.setAttribute("role", "button");
     row.setAttribute("tabindex", "0");
-    row.setAttribute("aria-label", `Load session ${item.title !== "" ? item.title : item.sessionId}`);
+    row.setAttribute("aria-label", `打开会话 ${item.title !== "" ? item.title : item.sessionId}`);
     if (isCurrent) row.setAttribute("aria-current", "true");
 
-    const title = document.createElement("div");
-    title.className = "session-title";
-    title.textContent =
+    const waiting = isCurrent && view.permission !== undefined;
+    if (waiting) {
+      const corner = el("span", "corner");
+      corner.setAttribute("aria-label", "等你批准");
+      row.append(corner);
+    }
+
+    const title =
       item.title !== ""
         ? item.title
         : item.sessionId.length > 18
           ? `${item.sessionId.slice(0, 12)}…${item.sessionId.slice(-4)}`
           : item.sessionId;
 
-    const when = document.createElement("div");
-    when.className = "session-when";
-    when.textContent = item.updatedAt === "" ? "NOT STATED" : item.updatedAt;
+    const meta = el("span", "m");
+    if (isCurrent) {
+      const [color, word] = waiting
+        ? ["var(--orange)", "等你批准"]
+        : facts.busy === true
+          ? ["var(--yellow)", "运行中"]
+          : ["var(--lime)", "已打开"];
+      const pill = el("span", "pill-dark");
+      const dot = el("i");
+      dot.style.background = color;
+      pill.append(dot, document.createTextNode(word));
+      meta.append(pill);
+    }
+    meta.append(el("span", "d", item.updatedAt === "" ? "时间未告知" : item.updatedAt));
 
-    const hint = document.createElement("div");
-    hint.className = "session-hint";
-    hint.textContent = isCurrent ? "OPEN · CLICK TO RELOAD" : "CLICK TO OPEN";
-
-    const del = document.createElement("button");
+    const del = el("button", "del", "×");
     del.type = "button";
-    del.className = "session-del";
-    del.textContent = "×";
-    del.setAttribute("aria-label", `Delete session ${item.sessionId}`);
+    del.setAttribute("aria-label", `删除会话 ${item.sessionId}`);
     del.addEventListener("click", (event) => {
       event.stopPropagation();
       const label = item.title !== "" ? item.title : item.sessionId;
-      if (window.confirm(`Delete session?\n${label}\n\nThis cannot be undone from this UI.`)) {
-        sessionDeleteHandler(item.sessionId);
-      }
+      if (window.confirm(`删除这个会话？\n${label}\n\n在这个界面里无法撤销。`)) sessionDeleteHandler(item.sessionId);
     });
 
     const load = (): void => {
@@ -381,189 +524,177 @@ export const mountConsole = (): ConsoleHandles => {
       }
     });
 
-    const body = document.createElement("div");
-    body.className = "session-body";
-    body.append(title, when, hint);
-    row.append(body, del);
+    row.append(el("span", "no", pad2(ordinal)), el("span", "t", title), del, meta);
     return row;
   };
 
   const renderSessions = (view: ConsoleView): void => {
-    const signature = view.sessions.map((item) => item.sessionId).join("|");
-    // Re-render when the list *or* the open session changes so the rail follows LOAD.
-    const current = view.sessionId ?? "";
-    const full = `${signature}#${current}#${view.sessionsUnavailable ?? ""}`;
-    if (full === sessionSignature) return;
-    sessionSignature = full;
+    const signature = [
+      view.sessions.map((item) => `${item.sessionId}:${item.title}:${item.updatedAt}`).join("|"),
+      view.sessionId ?? "",
+      view.sessionsUnavailable ?? "",
+      view.permission === undefined ? "" : "ask",
+      facts.busy === true ? "busy" : "",
+    ].join("#");
+    if (signature === sessionSignature) return;
+    sessionSignature = signature;
 
+    sessionsCount.textContent = pad2(view.sessions.length);
     sessionsList.replaceChildren();
+    // Newest first gets the highest number: the number is the tile's place in the list.
+    const numbered = (): HTMLElement[] => view.sessions.map((item, index) => sessionRow(item, view.sessions.length - index, view));
+
     if (view.sessionsUnavailable !== undefined) {
-      // A failed list is not an empty list. The previous rows are still shown above this notice
-      // when there are any; when there are none this says "cannot tell", never "there are none"
-      // (audit F6), and it still offers a way out.
-      const failed = document.createElement("div");
-      failed.className = "empty empty--error";
-      failed.textContent = `LIST FAILED · ${view.sessionsUnavailable.slice(0, 60)}`.toUpperCase();
-      const retry = document.createElement("button");
+      // A failed list is not an empty list: say "cannot tell", never "there are none" (audit F6),
+      // keep the rows we still hold, and offer a way out.
+      const failed = el("div", "empty bad");
+      failed.append(el("span", undefined, `会话列表取不到：${view.sessionsUnavailable.slice(0, 80)}`));
+      const retry = el("button", "mini go", "↻ 重新获取");
       retry.type = "button";
-      retry.className = "micro-btn micro-btn--primary";
       retry.id = "sessionsRetry";
-      retry.textContent = "↻ RETRY LIST";
       retry.addEventListener("click", () => sessionsRefreshHandler());
-      sessionsList.append(failed, retry);
-      for (const item of view.sessions) sessionsList.append(sessionRow(item, view.sessionId));
+      failed.append(retry);
+      sessionsList.append(failed, ...numbered());
       return;
     }
     if (view.sessions.length === 0) {
       // Empty list must offer the recovery action here — a dead-end panel is a dead control.
-      const empty = document.createElement("div");
-      empty.className = "empty";
-      empty.textContent = "NO SESSIONS · CREATE ONE";
-      const create = document.createElement("button");
+      const empty = el("div", "empty");
+      empty.append(el("span", undefined, "还没有会话"));
+      const create = el("button", "mini go", "＋ 新建会话");
       create.type = "button";
-      create.className = "micro-btn micro-btn--primary";
       create.id = "sessionsCreate";
-      create.textContent = "＋ CREATE SESSION";
       create.addEventListener("click", () => sessionCreateHandler());
-      sessionsList.append(empty, create);
+      empty.append(create);
+      sessionsList.append(empty);
       return;
     }
-    for (const item of view.sessions) sessionsList.append(sessionRow(item, view.sessionId));
+    sessionsList.append(...numbered());
+  };
+
+  const renderWait = (): void => {
+    approvalWait.textContent = permissionSince === undefined ? "00:00" : clock(Math.max(0, Math.floor((Date.now() - permissionSince) / 1000)));
   };
 
   const renderApproval = (view: ConsoleView): void => {
     const pending = view.permission;
+    root.dataset["ask"] = pending === undefined ? "false" : "true";
     const signature =
-      pending === undefined
-        ? "none"
-        : `${pending.requestId}#${pending.options.map((option) => option.optionId).join(",")}`;
+      pending === undefined ? "none" : `${pending.requestId}#${pending.options.map((option) => option.optionId).join(",")}`;
     if (signature === permissionSignature) return;
     permissionSignature = signature;
 
     if (pending === undefined) {
       approvalBar.hidden = true;
-      approvalSummary.textContent = "NOT STATED";
+      permissionSince = undefined;
+      approvalSummary.textContent = "未告知";
+      approvalId.textContent = "—";
       approvalActions.replaceChildren();
       return;
     }
 
+    permissionSince = Date.now();
+    renderWait();
     approvalBar.hidden = false;
-    approvalSummary.textContent = pending.summary === "" ? pending.requestId : pending.summary;
+    approvalSummary.textContent = pending.summary === "" ? "引擎没有给出摘要" : pending.summary;
+    approvalId.textContent = pending.requestId;
     approvalActions.replaceChildren();
     // Render exactly the engine's options — no whitelist (rule: only what runtime declares).
     for (const option of pending.options) {
-      const button = document.createElement("button");
+      const button = el("button");
       button.type = "button";
-      button.textContent = option.name === "" ? option.optionId : option.name;
       const kind = option.kind.toLowerCase();
       if (kind.includes("reject") || kind.includes("deny")) button.className = "reject";
-      else if (kind.includes("allow")) button.className = "allow";
+      else if (kind.includes("allow") && kind.includes("once")) button.className = "allow";
+      if (button.className === "allow") {
+        const ok = el("span", "ok");
+        ok.append(icon("i-check"));
+        button.append(ok);
+      }
+      button.append(document.createTextNode(option.name === "" ? option.optionId : option.name));
       button.addEventListener("click", () => permissionSelectHandler(pending.requestId, option.optionId));
       approvalActions.append(button);
     }
+    processView.scrollTop = processView.scrollHeight;
   };
 
-  const renderStage = (): void => {
-    const busy = facts.busy === true;
-    const silence = facts.silence;
-    if (!busy) {
-      const seconds = facts.elapsedSeconds;
-      anchorNum.textContent = seconds === undefined ? "—" : String(seconds);
-      anchorUnit.textContent = seconds === undefined ? "" : "s";
-      verdict.textContent = facts.sessionId === undefined ? "Idle" : "Ready";
-      compare.textContent = "NO RUN IN FLIGHT · SILENCE NOT MEASURED";
-      return;
-    }
-    const quiet = toSeconds(silence?.quietMs ?? null);
-    anchorNum.textContent = quiet === null ? "—" : String(quiet);
-    anchorUnit.textContent = quiet === null ? "" : "s";
+  const renderTitle = (view: ConsoleView | undefined): void => {
+    const id = facts.sessionId;
+    sessionCode.textContent = id === undefined ? "S-····" : `S-${id.slice(-4).toUpperCase()}`;
+    const listed = view?.sessions.find((item) => item.sessionId === id)?.title;
+    topic.textContent = facts.topic ?? (listed !== undefined && listed !== "" ? listed : id === undefined ? "未开会话" : "未命名会话");
+  };
 
-    const samples = silence?.samples ?? 0;
-    if (silence === undefined || silence.level === "unmeasured") {
-      verdict.textContent = "Not Established";
-      compare.textContent = [
-        quiet === null ? "QUIET —" : `QUIET ${quiet}s`,
-        `CADENCE NOT ESTABLISHED (${samples}/3 SAMPLES)`,
-        silence?.backstopExceeded === true ? "HARD LIMIT EXCEEDED" : null,
-      ]
-        .filter((part) => part !== null)
-        .join(" · ");
-      return;
-    }
-    verdict.textContent = silence.level === "stalled" ? "Stalled" : silence.level === "slow" ? "Slow" : "Nominal";
-    const baseline = silence.baselineMs === null ? "—" : `${Math.round(silence.baselineMs)}ms`;
-    const ratio = silence.ratio === null ? "—" : `×${silence.ratio.toFixed(1)}`;
-    compare.textContent = `QUIET ${quiet ?? "—"}s · USUALLY ${baseline} · ${ratio} (STALLS AT ×25)`;
+  const renderClock = (): void => {
+    const seconds = facts.elapsedSeconds;
+    resTime.textContent = seconds === undefined ? "--:--" : clock(seconds);
+    renderWait();
   };
 
   const renderSignal = (): void => {
     const silence = facts.silence;
     const samples = silence?.samples ?? 0;
-    sLevel.textContent = silence === undefined || silence.level === "unmeasured" ? "NOT ESTABLISHED" : silence.level.toUpperCase();
-    sQuiet.textContent = silence?.quietMs === null || silence?.quietMs === undefined ? "—" : `${toSeconds(silence.quietMs)}s`;
+    const measured = silence !== undefined && silence.level !== "unmeasured";
+    sLevel.textContent = measured ? LEVEL_ZH[silence.level] ?? silence.level : "未建立";
+    const quiet = toSeconds(silence?.quietMs ?? null);
+    sQuiet.textContent = quiet === null ? "—" : `${quiet}s`;
     sBaseline.textContent = silence?.baselineMs === null || silence?.baselineMs === undefined ? "—" : `${Math.round(silence.baselineMs)}ms`;
     sSamples.textContent = `${samples} / 3`;
     sThresholds.textContent =
       silence?.baselineMs === null || silence?.baselineMs === undefined
-        ? "SLOW ×8 · STALLED ×25"
-        : `SLOW ${Math.round(silence.baselineMs * 8)}ms · STALLED ${Math.round(silence.baselineMs * 25)}ms`;
+        ? "偏慢 ×8 · 停滞 ×25"
+        : `偏慢 ${Math.round(silence.baselineMs * 8)}ms · 停滞 ${Math.round(silence.baselineMs * 25)}ms`;
     sLastSign.textContent = silence?.lastSignKind ?? "—";
   };
 
-  // The register is pure presentation of what is already known, so it is wired here rather
-  // than in main: EXPERT reveals the transport facts that OPERATOR does not need.
-  const syncRegister = (expert: boolean): void => {
-    document.documentElement.dataset["expert"] = expert ? "true" : "false";
-    registerOperator.setAttribute("aria-pressed", String(!expert));
-    registerExpert.setAttribute("aria-pressed", String(expert));
+  // Diagnostics is pure presentation of what is already known, so it is wired here rather than
+  // in main: it reveals the transport facts the everyday screen does not need.
+  const syncExpert = (expert: boolean): void => {
+    root.dataset["expert"] = expert ? "true" : "false";
+    infoToggle.setAttribute("aria-pressed", String(expert));
+    infoToggle.setAttribute("aria-label", expert ? "隐藏传输诊断" : "显示传输诊断");
     transportPanel.hidden = !expert;
   };
-  registerOperator.addEventListener("click", () => syncRegister(false));
-  registerExpert.addEventListener("click", () => syncRegister(true));
-  syncRegister(false);
+  infoToggle.addEventListener("click", () => syncExpert(infoToggle.getAttribute("aria-pressed") !== "true"));
+  syncExpert(false);
 
   const applyView = (view: "process" | "events"): void => {
+    root.dataset["view"] = view;
     processView.hidden = view !== "process";
     eventsView.hidden = view !== "events";
     viewProcessButton.setAttribute("aria-current", String(view === "process"));
     viewEventsButton.setAttribute("aria-current", String(view === "events"));
+    pageTitle.textContent = view === "process" ? "RECORD" : "EVENTS";
+    pageTitleZh.textContent = view === "process" ? "作业记录" : "事件日志";
   };
 
   const renderEventLog = (entries: readonly EventLogEntry[]): void => {
     const pinned = eventsView.scrollTop + eventsView.clientHeight >= eventsView.scrollHeight - 24;
     eventsList.replaceChildren();
     if (entries.length === 0) {
-      const empty = document.createElement("div");
-      empty.className = "row";
-      const at = document.createElement("span");
-      at.className = "at";
-      at.textContent = "—";
-      const kind = document.createElement("span");
-      kind.className = "kind";
-      kind.textContent = "none";
-      const detail = document.createElement("span");
-      detail.className = "detail";
-      detail.textContent = "no event in this session yet";
-      empty.append(at, kind, detail);
-      eventsList.append(empty);
+      const row = el("div", "evt");
+      row.append(el("span", "at", "—"), el("span", "kind", "none"), el("span", "detail", "这个会话还没有事件"));
+      eventsList.append(row);
       return;
     }
     for (const entry of entries) {
-      const row = document.createElement("div");
-      row.className = "row";
-      const at = document.createElement("span");
-      at.className = "at";
-      at.textContent = entry.at;
-      const kind = document.createElement("span");
-      kind.className = "kind";
-      kind.textContent = entry.kind;
-      const detail = document.createElement("span");
-      detail.className = "detail";
-      detail.textContent = entry.detail;
-      row.append(at, kind, detail);
+      const row = el("div", "evt");
+      row.append(el("span", "at", entry.at), el("span", "kind", entry.kind), el("span", "detail", entry.detail));
       eventsList.append(row);
     }
     if (pinned) eventsView.scrollTop = eventsView.scrollHeight;
+  };
+
+  const syncBusy = (wasBusy: boolean): void => {
+    const busy = facts.busy === true;
+    root.dataset["busy"] = busy ? "true" : "false";
+    // One slot, two faces: 「发送」 while idle, 「中止」 while a turn is in flight.
+    submit.hidden = busy;
+    halt.hidden = !busy;
+    halt.disabled = !busy;
+    if (busy && !wasBusy) {
+      outcomeBaseline = { stop: lastView?.stopReason, error: lastView?.promptError };
+    }
   };
 
   return {
@@ -576,7 +707,6 @@ export const mountConsole = (): ConsoleHandles => {
     },
     onSessionCreate(handler): void {
       sessionCreateHandler = handler;
-      sessionsNew.addEventListener("click", handler);
     },
     onSessionsRefresh(handler): void {
       sessionsRefresh.addEventListener("click", handler);
@@ -600,17 +730,20 @@ export const mountConsole = (): ConsoleHandles => {
     onSubmit(handler): void {
       const fire = (): void => {
         const text = input.value.trim();
-        if (text === "") return;
+        if (text === "") {
+          input.focus();
+          return;
+        }
         input.value = "";
         handler(text);
       };
       submit.addEventListener("click", fire);
       input.addEventListener("keydown", (event) => {
-        if (event.key === "Enter" && !event.shiftKey) {
+        if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
           event.preventDefault();
           fire();
         }
-        // Esc in the command line interrupts the running turn — same path as ■ HALT, so the
+        // Esc in the command box interrupts the running turn — same path as 「中止」, so the
         // only observable outcome is the halt path's (action or visible error).
         if (event.key === "Escape" && facts.busy === true) {
           event.preventDefault();
@@ -629,34 +762,30 @@ export const mountConsole = (): ConsoleHandles => {
       optionHandler = handler;
     },
     setLink(state): void {
-      document.documentElement.dataset["link"] = state;
-      linkLabel.textContent = state === "ok" ? "LINK OK" : "LINK DOWN";
+      root.dataset["link"] = state;
+      linkLabel.textContent = state === "ok" ? "已连接" : "未连接";
     },
     setFacts(next): void {
+      const wasBusy = facts.busy === true;
       facts = { ...facts, ...next };
-      if (next.engine !== undefined) {
-        engine.textContent = next.engine;
-        metaEngine.textContent = next.engine;
-      }
-      if (next.sessionId !== undefined) {
-        sessionId.textContent = next.sessionId;
-        pSession.textContent = next.sessionId;
-      }
+      if (next.engine !== undefined) engine.textContent = next.engine;
+      if ("sessionId" in next) pSession.textContent = next.sessionId ?? "未告知";
       if (next.startedAt !== undefined) pStarted.textContent = next.startedAt;
-      if (next.topic !== undefined) {
-        topic.textContent = next.topic;
-        hollowLine.textContent = next.sessionId === undefined ? "No Session Title" : `session ${next.sessionId}`;
-      }
-      if (next.binary !== undefined) pBinary.textContent = next.binary;
-      if (next.cwd !== undefined) pCwd.textContent = next.cwd;
+      if (next.binary !== undefined) pBinary.textContent = next.binary === "NOT FOUND" ? "没找到" : next.binary;
+      if (next.cwd !== undefined) pCwd.textContent = next.cwd === "NOT STATED" ? "未告知" : next.cwd;
       if (next.exit !== undefined) pExit.textContent = next.exit;
       if (next.lastError !== undefined) pLastError.textContent = next.lastError;
       if (next.phase !== undefined) phase.textContent = next.phase;
       if (next.phaseNote !== undefined) phaseNote.textContent = next.phaseNote;
-      document.documentElement.dataset["busy"] = facts.busy === true ? "true" : "false";
-      halt.disabled = facts.busy !== true; // HALT is live only while a turn is; disabled is honest
-      renderStage();
+      syncBusy(wasBusy);
+      renderTitle(lastView);
+      renderClock();
       renderSignal();
+      if (lastView !== undefined && "busy" in next && (next.busy === true) !== wasBusy) {
+        // Busy flips the station cards' ▶▶▶ and the session pill; re-render from the last view.
+        renderStream(lastView);
+        renderSessions(lastView);
+      }
     },
     setPlaceholder(text): void {
       input.placeholder = text;
@@ -664,47 +793,28 @@ export const mountConsole = (): ConsoleHandles => {
     setCommandEnabled(enabled): void {
       input.disabled = !enabled;
       submit.disabled = !enabled;
-      submit.classList.toggle("primary", enabled);
     },
     render(view): void {
+      lastView = view;
       const model = view.options.find((option) => option.id === "model");
-      const mode = view.options.find((option) => option.id === "mode");
       const effort = view.options.find((option) => option.id === "effort");
-      metaModel.textContent = model === undefined ? "NOT DECLARED" : `${model.currentValue}${effort === undefined ? "" : ` · ${effort.currentValue}`}`;
-      metaMode.textContent = mode === undefined ? "NOT DECLARED" : mode.currentValue;
+      metaModel.textContent = model === undefined ? "模型未声明" : `${model.currentValue}${effort === undefined ? "" : ` · ${effort.currentValue}`}`;
 
-      pStop.textContent = view.stopReason ?? "NOT REPORTED";
+      pStop.textContent = view.stopReason ?? "未报告";
       pPermission.textContent =
         view.permission !== undefined
           ? view.permission.summary === ""
-            ? `WAITING · ${view.permission.requestId}`
+            ? `等待中 · ${view.permission.requestId}`
             : view.permission.summary
-          : "NOT REQUESTED";
+          : "没有请求";
       pUnmapped.textContent = String(view.unmapped);
       pProvenance.textContent = Object.entries(view.from)
         .map(([block, kinds]) => `${block}:${kinds.length}`)
         .join(" · ");
 
-      renderStage();
-      renderSignal();
-
-      stamp.textContent = [
-        facts.startedAt === undefined ? "no session filed" : `filed ${facts.startedAt}`,
-        facts.sessionId === undefined ? "session —" : `session ${facts.sessionId}`,
-        facts.cwd === undefined ? "cwd —" : `cwd ${facts.cwd}`,
-        view.options.find((option) => option.id === "model")?.currentValue ?? "model NOT DECLARED",
-      ].join(" · ");
-
-      const pinned = stream.scrollTop + stream.clientHeight >= stream.scrollHeight - 24;
-      stream.replaceChildren();
-      for (const turn of groupTurns(view.stream)) {
-        const block = document.createElement("section");
-        block.className = "turn";
-        for (const entry of turn.items) block.append(renderEntry(entry));
-        stream.append(block);
-      }
-      if (pinned) stream.scrollTop = stream.scrollHeight;
-
+      renderTitle(view);
+      renderCounts(view);
+      renderStream(view);
       renderTools(view);
       renderOptions(view);
       renderSessions(view);

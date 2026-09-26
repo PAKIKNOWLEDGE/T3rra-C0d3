@@ -1,26 +1,23 @@
 # 仓库里带的字体（以及它们的许可）
 
-界面的字体轨照 `docs/visual-guide.md` 的"当前一代"来：**宽展示字 + 技术 grotesque + 数据等宽 + 打字机存档轨 + 中文随包**。
-这里只放**可以再分发**的字体；商业/受限的那些不进仓库（见文末"想额外对照怎么办"）。
+字体轨照金标准 ARK 族来（`docs/design.md` §5）：**中文随包 + 系统数字轨 + 系统等宽轨**。
 
-| 文件 | 家族 | 用途（在 `app/index.html` 里的轨） | 许可 | 来源 |
-| --- | --- | --- | --- | --- |
-| `fonts.css` | —— | 本地化的 `@font-face` 表（把 Google Fonts 的 CDN 地址换成本目录文件名） | —— | 由 `fonts.googleapis.com` 的 CSS 重写而来 |
-| （多组哈希名 `.woff2`） | Michroma · Archivo · Orbitron · Instrument Sans · IBM Plex Mono · Special Elite · Courier Prime · Oswald | 展示轨 / UI 轨 / 数据轨 / 打字机轨（含各 unicode-range 子集） | **OFL 1.1**（Google Fonts） | Google Fonts |
-| `HarmonyOS_Sans_SC_Regular.woff2` · `HarmonyOS_Sans_SC_Bold.woff2` | HarmonyOS Sans SC | 中文（正文轨与展示轨的 CJK 字形） | 华为"免费商用"授权（**随包前请读原文**；本仓库主人 2026-09-23 裁定用它） | 由上一版实现 `NIX\t3rra-core\assets\fonts\` 复制 |
+| 轨 | 字体 | 来源 | 许可 |
+| --- | --- | --- | --- |
+| 正文 / 标题 | `HarmonyOS_Sans_SC_Regular.woff2` · `HarmonyOS_Sans_SC_Bold.woff2`（本目录） | 由上一版实现 `NIX\t3rra-core\assets\fonts\` 复制 | 华为「免费商用」授权（**随包前请读原文**；仓库主人 2026-09-23 裁定用它） |
+| 数字 / 英文角标 | Bahnschrift SemiCondensed → Bahnschrift → Arial Narrow | Windows 自带，不进仓库 | 系统字体 |
+| 等宽 | Cascadia Mono → JetBrains Mono → Consolas | Windows 自带，不进仓库 | 系统字体 |
 
-## 为什么没有"设计师自用那几款"
+`fonts.css` 只声明 HarmonyOS 两个字重。
 
-`Akira Expanded`（Demo 版）、`Clash Display`、`Satoshi`、`MiSans`、`京華老宋体`、几个打字机体
-都来自那个字体库站点，**许可不允许我们随包分发**，所以**不进仓库**。
-需要本地对照时可以这样用（只在你自己的机器上、不进提交）：
+## 已移除
 
-1. 把文件放到本目录，命名照 `docs/visual-guide.md` 的记录；
-2. 在 `app/index.html` 的 `<style>` 前临时加一段 `@font-face`，把家族名放进对应字体栈的最前面；
-3. **别把这些文件提交上来。**
+2026-09-26 删除了旧 HUD 一代的 Google Fonts 切片：Michroma、Archivo、Orbitron、Instrument Sans、IBM Plex Mono、Special Elite、Courier Prime、Oswald，共 35 个 `.woff2`，许可均为 OFL 1.1。它们承载的是被否定的「科幻 HUD」气质，新界面不再引用。需要时可从 git 历史取回。
+
+## 已知空白
+
+方舟那种窄粗斜体数字，目前由 Bahnschrift SemiCondensed 加浏览器合成斜体顶替，**没有可随包分发的替代**。在 mac/Linux 上会回退到 Arial Narrow 或系统无衬线字体。见 `docs/design.md` §7。
 
 ## 缺字体会怎样
 
-`fonts.css` 里的每条 `@font-face` 都带 `font-display: swap`，而且每一条字体栈都以通用族收尾
-（`sans-serif` / `monospace`），**文件缺席时只会回退，不会崩**。
-`npm run check:app` 会检查 `fonts.css` 引用的文件是否都在——少文件会让闸变红，避免"悄悄换字体"那种漂移。
+每条字体栈都以通用族收尾，文件缺席时只会回退，不会崩。`npm run check:app` 会检查 `fonts.css` 引用的文件是否都在。

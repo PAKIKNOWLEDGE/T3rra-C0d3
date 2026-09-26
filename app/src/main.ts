@@ -30,8 +30,8 @@ let nextId = 1;
 const pending = new Map<number, { method: string }>();
 
 let facts: SessionFacts = {
-  phase: "[ STARTING ]",
-  phaseNote: "BYTES ONLY · NO ENGINE YET",
+  phase: "启动中",
+  phaseNote: "只有字节通道，还没有引擎",
   busy: false,
 };
 const patch = (next: SessionFacts): void => {
@@ -118,11 +118,11 @@ const engineReady = (action: string): boolean => {
   if (binary === undefined || binary === "NOT FOUND") {
     patch({
       lastError: `${action} blocked: engine not ready`,
-      phase: "[ NO ENGINE ]",
-      phaseNote: "PRESS RESTART ⟲ OR CHECK T3RRA_ENGINE_BIN",
+      phase: "没有引擎",
+      phaseNote: "按右下「重启」，或检查 T3RRA_ENGINE_BIN",
     });
     ui.setCommandEnabled(true);
-    ui.setPlaceholder("ENGINE NOT READY · PRESS RESTART ⟲");
+    ui.setPlaceholder("引擎没就绪 · 按右下「重启」");
     return false;
   }
   return true;
@@ -142,12 +142,12 @@ const apply = (events: readonly AgentEvent[]): void => {
       cadence = endTurn(cadence);
       patch(
         event.kind === "prompt.ended"
-          ? { busy: false, phase: "[ READY ]", phaseNote: `TURN ENDED · ${event.stopReason.toUpperCase()}`, ...silenceNow() }
-          : { busy: false, phase: "[ READY ]", phaseNote: "TURN FAILED · SEE LAST ERROR", lastError: event.reason, ...silenceNow() },
+          ? { busy: false, phase: "就绪", phaseNote: `本轮结束 · ${event.stopReason}`, ...silenceNow() }
+          : { busy: false, phase: "就绪", phaseNote: "本轮失败 · 原因写在记录末尾", lastError: event.reason, ...silenceNow() },
       );
     }
     if (event.kind === "sessions.unavailable") {
-      patch({ phaseNote: `SESSION LIST FAILED · ${event.reason.slice(0, 60)}`, ...silenceNow() });
+      patch({ phaseNote: `会话列表取不到 · ${event.reason.slice(0, 60)}`, ...silenceNow() });
     }
   }
   ui.render(view);
@@ -184,11 +184,11 @@ const handleResponse = (method: string, result: unknown): boolean => {
     patch({
       sessionId: mapping.sessionId,
       startedAt: new Date().toISOString().replace("T", " ").slice(0, 19),
-      phase: "[ READY ]",
-      phaseNote: "AWAITING INSTRUCTION · SESSION OPEN",
+      phase: "就绪",
+      phaseNote: "会话已打开 · 等你下指令",
     });
     ui.setCommandEnabled(true);
-    ui.setPlaceholder("AWAITING COMMAND");
+    ui.setPlaceholder("下达指令");
     refreshSessions();
   }
   if (mapping.events.length > 0) apply(mapping.events);
@@ -209,8 +209,8 @@ const handleResponse = (method: string, result: unknown): boolean => {
     cadence = beginWaiting(cadence, Date.now());
     patch({
       busy: true,
-      phase: "[ RUNNING ]",
-      phaseNote: "STREAMING · ESC OR ■ HALT TO INTERRUPT THIS TURN",
+      phase: "运行中",
+      phaseNote: "正在输出 · Esc 或「中止」打断本轮",
       ...silenceNow(),
     });
     send("session/prompt", { sessionId: view.sessionId, prompt: [{ type: "text", text }] });
@@ -264,8 +264,8 @@ const handleLine = (line: string): void => {
         // Failed opens must leave the dock usable and say why — no silent dead end (rule §五.3).
         queuedPrompt = undefined;
         ui.setCommandEnabled(true);
-        ui.setPlaceholder("OPEN FAILED · + NEW OR TYPE TO RETRY");
-        patch({ phase: "[ READY ]", phaseNote: `OPEN FAILED · ${known === "session/load" ? "PICK A SESSION OR + NEW" : "RETRY + NEW"}` });
+        ui.setPlaceholder("打开失败 · 新建会话，或再发一次");
+        patch({ phase: "就绪", phaseNote: `打开失败 · ${known === "session/load" ? "换一个会话，或新建" : "再新建一次"}` });
       }
       apply(failureEvents(known, response.error));
       return;
@@ -280,7 +280,7 @@ const handleLine = (line: string): void => {
   // whatever the operator was looking at.
   const translation = translateLine(line);
   if (translation.sessionId !== undefined && view.sessionId !== undefined && translation.sessionId !== view.sessionId) {
-    patch({ lastError: `dropped update for session ${translation.sessionId.slice(0, 12)}… (showing ${view.sessionId.slice(0, 12)}…)`, phaseNote: "CROSS-SESSION UPDATE DROPPED" });
+    patch({ lastError: `dropped update for session ${translation.sessionId.slice(0, 12)}… (showing ${view.sessionId.slice(0, 12)}…)`, phaseNote: "丢弃了一条别的会话的更新" });
     return;
   }
   apply(translation.events);
@@ -290,8 +290,8 @@ const handshake = async (): Promise<void> => {
   const probe = await transport.probe();
   patch({ binary: probe.binary ?? "NOT FOUND", cwd: probe.cwd ?? "NOT STATED" });
   if (probe.binary === null) {
-    patch({ phase: "[ NO ENGINE ]", phaseNote: "SET T3RRA_ENGINE_BIN OR PUT OPENCODE ON PATH" });
-    ui.setPlaceholder("ENGINE NOT FOUND · SET T3RRA_ENGINE_BIN");
+    patch({ phase: "没有引擎", phaseNote: "设置 T3RRA_ENGINE_BIN，或把 opencode 放进 PATH" });
+    ui.setPlaceholder("没找到引擎 · 设置 T3RRA_ENGINE_BIN");
     ui.setCommandEnabled(false);
     return;
   }
@@ -302,14 +302,14 @@ const handshake = async (): Promise<void> => {
   refreshSessions();
   ui.setLink("ok");
   ui.setCommandEnabled(true);
-  ui.setPlaceholder("PICK A SESSION · + NEW · OR TYPE TO OPEN ONE");
-  patch({ phase: "[ READY ]", phaseNote: "ENGINE UP · NO SESSION UNTIL YOU ASK" });
+  ui.setPlaceholder("选一个会话、新建，或直接输入指令开新会话");
+  patch({ phase: "就绪", phaseNote: "引擎已启动 · 你不开口就不建会话" });
 };
 
 transport.onLine(handleLine);
 transport.onExit((info) => {
   ui.setLink("down");
-  patch({ busy: false, phase: "[ ENGINE EXITED ]", phaseNote: "LINK DOWN · PRESS RESTART", exit: `code ${info.code ?? "—"} · signal ${info.signal ?? "—"}` });
+  patch({ busy: false, phase: "引擎已退出", phaseNote: "链路断开 · 按右下「重启」", exit: `code ${info.code ?? "—"} · signal ${info.signal ?? "—"}` });
   ui.setCommandEnabled(false);
   apply([{ kind: "engine.exited", from: { method: "process", variant: undefined }, code: info.code, signal: info.signal }]);
 });
@@ -321,7 +321,7 @@ transport.onError((message) => {
 // Recovery is on-screen and clickable — RESTART is the way out, so point at it.
 transport.onLinkDown((reason) => {
   ui.setLink("down");
-  patch({ busy: false, phase: "[ LINK DOWN ]", phaseNote: `CHANNEL ${reason.toUpperCase()} · PRESS RESTART ⟲`, lastError: `byte channel down: ${reason}` });
+  patch({ busy: false, phase: "链路断开", phaseNote: `通道 ${reason} · 按右下「重启」`, lastError: `byte channel down: ${reason}` });
   apply([{ kind: "link.down", from: { method: "stream", variant: undefined }, reason }]);
 });
 
@@ -336,18 +336,18 @@ ui.onViewChange((next) => {
 const createSession = (why: string): void => {
   if (!engineReady(why)) return;
   queuedPrompt = undefined;
-  patch({ phase: "[ OPENING SESSION ]", phaseNote: `${why} · session/new`, busy: false, topic: undefined });
+  patch({ phase: "正在开会话", phaseNote: `${why} · session/new`, busy: false, topic: undefined });
   ui.setView("process");
   ui.setCommandEnabled(true);
-  ui.setPlaceholder("AWAITING NEW SESSION");
+  ui.setPlaceholder("等新会话打开");
   send("session/new", { cwd: facts.cwd === undefined || facts.cwd === "NOT STATED" ? "." : facts.cwd, mcpServers: [] });
 };
 
 ui.onNewSession(() => {
-  createSession("NEW SESSION");
+  createSession("新建会话");
 });
 ui.onSessionCreate(() => {
-  createSession("CREATE SESSION");
+  createSession("空态新建");
 });
 
 ui.onSessionsRefresh(() => {
@@ -365,14 +365,14 @@ ui.onSessionLoad((sessionId, cwd) => {
   }
   patch({
     sessionId,
-    phase: "[ LOADING ]",
+    phase: "载入中",
     phaseNote: `session/load ${sessionId.slice(0, 12)}…`,
     busy: false,
     topic: undefined,
   });
   ui.setView("process");
   ui.setCommandEnabled(false);
-  ui.setPlaceholder("REPLAYING HISTORY");
+  ui.setPlaceholder("正在回放历史");
   send("session/load", {
     sessionId,
     cwd: cwd === "" || cwd === "NOT STATED" ? facts.cwd === undefined || facts.cwd === "NOT STATED" ? "." : facts.cwd : cwd,
@@ -382,11 +382,11 @@ ui.onSessionLoad((sessionId, cwd) => {
 
 ui.onSessionDelete((sessionId) => {
   if (!engineReady("DELETE")) return;
-  patch({ phase: "[ DELETING ]", phaseNote: `DELETE session ${sessionId.slice(0, 12)}…` });
+  patch({ phase: "删除中", phaseNote: `删除会话 ${sessionId.slice(0, 12)}…` });
   void deleteSession((method, path, body) => transport.http(method, path, body), sessionId)
     .then((result) => {
       if (result.status >= 400) {
-        patch({ lastError: `delete failed: HTTP ${result.status}`.slice(0, 160), phase: "[ READY ]", phaseNote: "DELETE FAILED" });
+        patch({ lastError: `delete failed: HTTP ${result.status}`.slice(0, 160), phase: "就绪", phaseNote: "删除失败" });
         return;
       }
       apply([
@@ -396,19 +396,19 @@ ui.onSessionDelete((sessionId) => {
           sessionId,
         },
       ]);
-      patch({ phase: "[ READY ]", phaseNote: `DELETED ${sessionId.slice(0, 12)}…` });
+      patch({ phase: "就绪", phaseNote: `已删除 ${sessionId.slice(0, 12)}…` });
       if (view.sessionId === sessionId) {
         // Open session is gone — do not auto-create another (that was the junk-session bug).
         const sessions = view.sessions.filter((item) => item.sessionId !== sessionId);
         view = { ...emptyView(), sessions };
-        patch({ sessionId: undefined, topic: undefined, phase: "[ READY ]", phaseNote: "SESSION DELETED · PICK ANOTHER OR + NEW" });
+        patch({ sessionId: undefined, topic: undefined, phase: "就绪", phaseNote: "会话已删除 · 选另一个，或新建" });
         ui.setCommandEnabled(true);
-        ui.setPlaceholder("PICK A SESSION · + NEW · OR TYPE TO OPEN ONE");
+        ui.setPlaceholder("选一个会话、新建，或直接输入指令开新会话");
       }
       refreshSessions();
     })
     .catch((error: unknown) => {
-      patch({ lastError: String(error).slice(0, 160), phase: "[ READY ]", phaseNote: "DELETE FAILED" });
+      patch({ lastError: String(error).slice(0, 160), phase: "就绪", phaseNote: "删除失败" });
     });
 });
 
@@ -436,10 +436,10 @@ ui.onPermissionSelect((requestId, optionId) => {
           optionId,
         },
       ]);
-      patch({ phase: "[ READY ]", phaseNote: `APPROVAL · ${optionId.toUpperCase()}` });
+      patch({ phase: "就绪", phaseNote: `已答复批准 · ${optionId}` });
     })
     .catch((error: unknown) => {
-      patch({ lastError: String(error).slice(0, 160), phase: "[ APPROVAL ]", phaseNote: "REPLY FAILED · TRY AGAIN" });
+      patch({ lastError: String(error).slice(0, 160), phase: "待批准", phaseNote: "答复没发出去 · 再点一次" });
     });
 });
 
@@ -448,8 +448,8 @@ ui.onSubmit((text) => {
     if (!engineReady("TYPE TO OPEN")) return;
     // No session yet: create one, then send this instruction when the open lands.
     queuedPrompt = text;
-    ui.setPlaceholder("OPENING SESSION FOR INSTRUCTION");
-    patch({ phase: "[ OPENING SESSION ]", phaseNote: "NEW SESSION FOR FIRST INSTRUCTION", busy: false });
+    ui.setPlaceholder("正在为这条指令开会话");
+    patch({ phase: "正在开会话", phaseNote: "为第一条指令新建会话", busy: false });
     send("session/new", { cwd: facts.cwd === undefined || facts.cwd === "NOT STATED" ? "." : facts.cwd, mcpServers: [] });
     return;
   }
@@ -459,7 +459,7 @@ ui.onSubmit((text) => {
   // blows the stage open and pushes the feed off-screen). Full text lives in the stream.
   if (facts.topic === undefined) patch({ topic: shortTopic(text) });
   cadence = beginWaiting(cadence, Date.now());
-  patch({ busy: true, phase: "[ RUNNING ]", phaseNote: "STREAMING · ESC OR ■ HALT TO INTERRUPT THIS TURN", ...silenceNow() });
+  patch({ busy: true, phase: "运行中", phaseNote: "正在输出 · Esc 或「中止」打断本轮", ...silenceNow() });
   send("session/prompt", { sessionId: view.sessionId, prompt: [{ type: "text", text }] });
 });
 
@@ -483,10 +483,10 @@ const cancelOutstandingPermission = (why: string): void => {
         .write(JSON.stringify({ jsonrpc: "2.0", id: requestId, result: { outcome: { outcome: "cancelled" } } }))
         .catch((error: unknown) => patch({ lastError: `could not cancel permission: ${String(error).slice(0, 120)}` }));
       apply([{ kind: "permission.cancelled", from: { method: "session/request_permission", variant: undefined }, requestId: outstanding.requestId }]);
-      patch({ phaseNote: `PERMISSION CANCELLED · ${why}` });
+      patch({ phaseNote: `批准请求已撤回 · ${why}` });
     } else {
       // An id we cannot answer with is its own defect: say which, and still close the dock.
-      patch({ lastError: `permission ${outstanding.requestId} has no numeric request id; cannot answer cancelled`, phaseNote: `PERMISSION NOT CANCELLED · ${why}` });
+      patch({ lastError: `permission ${outstanding.requestId} has no numeric request id; cannot answer cancelled`, phaseNote: `批准请求没能撤回 · ${why}` });
       apply([{ kind: "permission.cancelled", from: { method: "session/request_permission", variant: undefined }, requestId: outstanding.requestId }]);
     }
   }
@@ -495,15 +495,15 @@ const cancelOutstandingPermission = (why: string): void => {
 ui.onRestart(() => {
   const binary = facts.binary;
   const cwd = facts.cwd;
-  cancelOutstandingPermission("RESTART");
+  cancelOutstandingPermission("重启");
   // A restart orphans every request we had outstanding; leaving them in `pending` is how a
   // later engine message got mistaken for an old response (audit F5).
   pending.clear();
   view = emptyView();
   // Merge, never replace — replacing dropped `binary` and left + NEW silently dead.
   patch({
-    phase: "[ RESTARTING ]",
-    phaseNote: "KILLING THE ENGINE PROCESS",
+    phase: "重启中",
+    phaseNote: "正在结束引擎进程",
     busy: false,
     sessionId: undefined,
     topic: undefined,
@@ -511,7 +511,7 @@ ui.onRestart(() => {
     cwd,
   });
   ui.setCommandEnabled(true);
-  ui.setPlaceholder("RESTARTING ENGINE · PRESS + NEW AFTER READY");
+  ui.setPlaceholder("引擎重启中 · 就绪后再新建会话");
   void transport
     .kill()
     .then(handshake)
@@ -548,14 +548,14 @@ ui.onHalt(() => {
   if (!engineReady("HALT")) return;
   const sessionId = view.sessionId;
   if (sessionId === undefined || facts.busy !== true) {
-    patch({ lastError: "HALT needs a running turn — none is in flight", phaseNote: "NOTHING RUNNING · HALT INERT" });
+    patch({ lastError: "HALT needs a running turn — none is in flight", phaseNote: "没有在跑的轮次 · 中止无效" });
     return;
   }
   const turnId = pendingPromptId();
-  patch({ phase: "[ HALTING ]", phaseNote: `CANCEL SENT · SESSION/${sessionId.slice(0, 12)}…` });
+  patch({ phase: "中止中", phaseNote: `已发出 session/cancel · ${sessionId.slice(0, 12)}…` });
   void transport.write(cancelNotificationLine(sessionId))
     .catch((error: unknown) => {
-      patch({ lastError: String(error).slice(0, 160), phase: "[ RUNNING ]", phaseNote: "CANCEL NOT SENT · RETRY OR RESTART ⟲" });
+      patch({ lastError: String(error).slice(0, 160), phase: "运行中", phaseNote: "中止没发出去 · 再按一次，或「重启」" });
     });
 
   // Watchdog: if the turn we asked to cancel is still unanswered when the window closes, the
@@ -565,7 +565,7 @@ ui.onHalt(() => {
     if (unconfirmed) {
       patch({
         lastError: `no turn end within ${CANCEL_CONFIRM_WINDOW_MS / 1000}s after session/cancel — engine may still be running`,
-        phaseNote: "CANCEL UNCONFIRMED · HALT AGAIN OR RESTART ⟲",
+        phaseNote: "10 秒内没收到本轮结束 · 再按「中止」，或「重启」",
       });
     }
   }, CANCEL_CONFIRM_WINDOW_MS);
@@ -601,7 +601,7 @@ ui.setView("process");
 patch({});
 void handshake().catch((error: unknown) => {
   ui.setLink("down");
-  patch({ phase: "[ ERROR ]", phaseNote: "HANDSHAKE FAILED", lastError: String(error).slice(0, 160) });
+  patch({ phase: "出错", phaseNote: "握手失败", lastError: String(error).slice(0, 160) });
 });
 
 export {};

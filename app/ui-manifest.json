@@ -7,55 +7,59 @@
     "PARADIGM (2026-09-23): `wired` only proves a reference exists. A control is honest only if",
     "clicking it has an observable outcome — action, or a visible error. Silent `return` on a",
     "failed precondition is a dead control (＋ NEW after 6190ad4). check:app bans that guard shape.",
-    "Empty lists must offer the recovery action in the empty state itself (see sessionsList).",
+    "Empty lists must offer the recovery action in the empty state itself (see sessionsList, stream).",
     "Why this file exists: three rail items were written as <div>s, so the control scan never saw",
     "them, and they stayed dead while every gate reported green. A gap can hide by simply not",
     "being counted; this file makes not-counting a build failure."
   ],
   "elements": {
-    "regOperator": {
-      "wired": true,
-      "role": "register: operator"
-    },
-    "regExpert": {
-      "wired": true,
-      "role": "register: expert reveals transport facts"
-    },
     "viewProcess": {
       "wired": true,
-      "role": "rail: conversation view"
+      "role": "nav pad: the work record view (current view = light block)"
     },
     "viewEvents": {
       "wired": true,
-      "role": "rail: raw event log"
+      "role": "nav pad: the raw event log view"
+    },
+    "infoToggle": {
+      "wired": true,
+      "role": "ⓘ: show / hide transport diagnostics in the right column"
+    },
+    "newSession": {
+      "wired": true,
+      "role": "blue tile: create a fresh session (the page's one primary entry)"
+    },
+    "sessionsRefresh": {
+      "wired": true,
+      "role": "session list: reload the engine's session list"
     },
     "promptInput": {
       "wired": true,
-      "role": "dock: command input"
+      "role": "dock: instruction box (Enter sends, Shift+Enter newline, Esc halts a running turn)"
     },
     "promptSubmit": {
       "wired": true,
-      "role": "dock: send the instruction"
+      "role": "dock: send the instruction (hidden while a turn runs)"
     },
     "halt": {
       "wired": true,
-      "role": "dock: interrupt the running turn; also Esc in the input"
+      "role": "dock: interrupt the running turn via session/cancel (shown only while a turn runs)"
     },
     "restart": {
       "wired": true,
-      "role": "dock: kill and respawn the engine process"
+      "role": "engine box: kill and respawn the engine process"
     },
     "modes": {
-      "static": "container only; the runtime's mode chips are created inside it by the renderer"
+      "static": "container only; the runtime's mode buttons are created inside it from configOptions"
     },
     "options": {
       "static": "container only; selects are created from the runtime's configOptions"
     },
     "tools": {
-      "static": "container only; tool rows are created from the event stream"
+      "static": "container only; the work-order index rows are created from the event stream"
     },
     "stream": {
-      "static": "container only; message and reasoning blocks are created from the stream"
+      "static": "container only; instruction / reply / work-order blocks (and the empty state with its CREATE button) are created by the renderer"
     },
     "eventsList": {
       "static": "container only; the event log rows are created by the renderer"
@@ -64,28 +68,16 @@
       "static": "the EVENTS surface itself; reached by the viewEvents button"
     },
     "processView": {
-      "static": "the PROCESS surface itself; reached by the viewProcess button"
+      "static": "the RECORD surface itself; reached by the viewProcess button"
     },
     "transportPanel": {
-      "static": "panel shown or hidden by the register; contains no controls"
-    },
-    "newSession": {
-      "wired": true,
-      "role": "rail primary: create a fresh session"
-    },
-    "sessionsNew": {
-      "wired": true,
-      "role": "dossier primary: create a fresh session"
-    },
-    "sessionsRefresh": {
-      "wired": true,
-      "role": "dossier: reload the engine's session list"
+      "static": "section shown or hidden by infoToggle; contains no controls"
     },
     "sessionsList": {
-      "static": "container only; rows (LOAD / DEL) are created by the renderer from session/list"
+      "static": "container only; session tiles (load / delete) and the empty / failed states with their recovery buttons are created by the renderer from session/list"
     },
     "approvalBar": {
-      "static": "approval strip; option buttons are created from session/request_permission.options"
+      "static": "approval card; option buttons are created from session/request_permission.options"
     },
     "approvalSummary": {
       "static": "text only; shows the pending request summary"
