@@ -47,13 +47,13 @@
 | `ⓘ` 方块 | 诊断开关：显示右栏「诊断」（退出码、最近错误、未识别计数、来源） | `SessionFacts` + `ConsoleView.unmapped/from` |
 | 页名 `RECORD / 作业记录` | 随视图切换为 `EVENTS / 事件日志` | 本地视图状态 |
 | `S-04 主题令牌抽取` | `S-` + 会话 id 末 4 位 + 首条指令的短主题（没有就用会话标题，再没有写「未命名会话」） | `sessionId`、操作者指令、`session/list` |
-| 资源条 | **工单数**、**会话用时** | 工具事件计数；时钟 |
+| 资源条 | **工单数**、**会话用时**、**上下文用量** | 工具事件计数；时钟；`usage.updated` |
 | 蓝色大块 | 新建会话 | `session/new` |
 | 会话块 | 编号（按列表位置）+ 标题 + 更新时间；当前会话 = 浅色块，带状态胶囊（已打开 / 运行中 / 等你批准）；等批准时加橙三角角标 | `session/list`；当前会话的 busy 与 permission |
 | 指令卡 | 黑底「指令 NN」名牌 +「已发出 \| 时间」双段 + 正文 | 操作者自己发出的指令 |
 | 回复卡 | 浅色 chip（引擎报告的 agent 名）+ markdown 正文 | `agent_message_chunk` |
 | 思考卡 | 灰色 chip「思考」，可折叠 | `agent_thought_chunk` |
-| **站点卡（工单）** | 左色条 + 淡水印 = 引擎声明的 `kind`（原文写在卡底）；名 = `title`；状态字；右下 `#NN` 序号；运行中 ▶▶▶ | `tool_call(_update)` |
+| **站点卡（工单）** | 左色条 + 淡水印 = 引擎声明的 `kind`（原文写在卡底）；名 = `title`；状态字；右下 `#NN` 序号；运行中 ▶▶▶；点击打开浮动 inspector 查看真实目标、参数、状态、耗时、输出和错误 | `tool_call(_update)` |
 | **道具弹窗（批准）** | 放在记录流末尾的浅色卡，不是浮层。黑标签「需要你批准」、「已等待 \| mm:ss」、摘要、请求编号、底部网点纹操作栏（按钮 = 引擎给的选项，`allow_once` 为蓝） | `session/request_permission`；已等待 = 本机从弹出起计时 |
 | 结局条 | 「本轮已被你中止」/「本轮失败」/「字节通道已断开」，只在**本轮**出现该事实时画 | `stopReason:"cancelled"`、`prompt.failed`、`link.down` |
 | 相连分段按钮 | 模式（引擎给几个画几个） | `configOptions` 中 `category=mode` |
@@ -61,7 +61,7 @@
 | 指令坞 | 多行输入 + 状态灯（相位文字）+ 模式 + 发送 / 中止（同一位置二选一） | `SessionFacts.phase/busy` |
 | 空态 | 「还没有打开会话」+ 蓝色「新建会话」 | 空流；AGENTS §三「空态必须给恢复动作」 |
 | 会话列表头「↻」 | 重新拉会话列表；列表取不到时换成「会话列表取不到」+「重新获取」 | `session/list`、`sessions.unavailable` |
-| 左栏底部 Workspace / Engine bin | 引擎工作目录与可执行文件路径 | 桥的 probe |
+| 左栏底部 Workspace / Engine bin | 当前工作目录（可用系统目录选择器选择并自动应用，也可输入绝对路径）与可执行文件路径 | 桥的 probe；`SessionFacts.cwd`；原生目录选择器 |
 | 右栏「参数」 | model / effort 等非模式选项的下拉框 | `configOptions` |
 | 右栏「节奏」 | 静默判断：判断、静默秒数、基线、样本 n/3、阈值、最近信号（样本不足写「未建立」） | `cadence.ts`（规则 7–9） |
 | 右下引擎框 | 引擎名、连接状态、当前模型、「重启」按钮（杀进程重开） | `initialize` 响应、传输状态 |
@@ -70,12 +70,11 @@
 
 | 样张有 | 为什么不画 | 解锁条件 |
 | --- | --- | --- |
-| 上下文圆环 38%、76K/200K、输入 / 输出 token | 契约没有携带 `usage_update` | 契约加 usage 事件（`adapters/opencode-acp.md` §四已有字段证据）。注意：该事件**不是每轮都发** |
+| 输入 / 输出 token | `PromptResponse.usage` 的明细没有进入本仓事件契约 | 需要单独登记字段证据；上下文圆环已由 `usage_update` 解锁 |
 | 计划清单 | 引擎零发射 `plan`【源码】 | 引擎侧出现计划数据 |
 | 改动文件列表、+12/−4 行数 | diff 只在 HTTP 面，未接 | 接 HTTP diff |
-| 工单卡点开看输出 / diff | 契约里没有工具输出 | 契约加工具 content |
 | 其它会话的「完成 / 已中止」胶囊 | `session/list` 只有 `{sessionId, cwd, title, updatedAt}` | — |
-| 自动批准开关 | 审批策略在 `opencode.json`，app 内没有入口 | 配置面 |
+| 审批策略选择器 | 左栏 Workspace 读取并设置项目级 `permission.edit`，保存后重启 ACP | 桥端 `project-config` 读写 cwd 下 `opencode.json`；`SessionFacts.permissionEdit` |
 | 附加文件 | 未实现 | 图片粘贴（开放项） |
 
 ## 5. 令牌与字体
@@ -116,7 +115,7 @@
 3. 纯视觉改动只改 `app/index.html` 与 `app/src/ui/console.ts`。
    要**新增数据**（例如上下文圆环）就是契约变更，按 `rules.md` §五走：
    1. 先在 `docs/adapters/opencode-acp.md` 登记源码与报文证据；
-   2. 再改 `app/src/contract/events.ts`（加事件）和 `app/src/engine/acp.ts`（把它从故意忽略的名单 `acp.ts:87` 里移出来，`usage_update` 目前就在那份名单上）；
+   2. 再改 `app/src/contract/events.ts`（加事件）和 `app/src/engine/acp.ts`（把真实 `usage_update` 从故意忽略的名单移到正式映射）；
    3. 然后改 `app/src/view/derive.ts`（加进 `ConsoleView` 与 `from` 溯源）；
    4. 最后让 `test/acp-coverage.test.ts` 保持通过。
 4. `npm run check:all` 全绿。

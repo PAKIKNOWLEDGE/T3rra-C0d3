@@ -28,3 +28,12 @@ export const deleteSessionPath = (sessionId: string): string => `/session/${enco
 
 export const deleteSession = async (channel: HttpChannel, sessionId: string): Promise<HttpResult> =>
   channel("DELETE", deleteSessionPath(sessionId));
+
+/** Project-scoped config routes use the selected cwd as the workspace selector. */
+export const projectConfigPath = (cwd: string): string => `/config?directory=${encodeURIComponent(cwd)}`;
+
+export const getProjectConfig = async (channel: HttpChannel, cwd: string): Promise<HttpResult> =>
+  channel("GET", projectConfigPath(cwd));
+
+export const updateProjectConfig = async (channel: HttpChannel, cwd: string, config: unknown): Promise<HttpResult> =>
+  channel("PATCH", projectConfigPath(cwd), config);

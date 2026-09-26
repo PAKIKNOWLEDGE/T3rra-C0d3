@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { BLOCK_PROVENANCE, VIEW_BLOCKS, reduceAll, type StreamEntry } from "../app/src/view/derive.ts";
+import { BLOCK_PROVENANCE, VIEW_BLOCKS, reduceAll, reduceView, type StreamEntry } from "../app/src/view/derive.ts";
 import type { AgentEvent } from "../app/src/contract/events.ts";
 import { EVENT_KINDS } from "../app/src/contract/events.ts";
 
@@ -19,6 +19,8 @@ const toolStart = (toolCallId: string, title: string, hint = ""): AgentEvent => 
   toolCallId,
   title,
   hint,
+  status: "pending",
+  details: { locations: [], input: undefined, output: undefined, error: undefined },
 });
 
 const toolUpdate = (toolCallId: string, status: string): AgentEvent => ({
@@ -49,6 +51,43 @@ describe("unified stream timeline", () => {
     const view = reduceAll([toolStart("t1", "Bash", "shell"), toolUpdate("t1", "done")]);
     expect(view.tools).toHaveLength(1);
     expect(view.tools[0]?.status).toBe("done");
+  });
+
+  it("merges tool detail updates and measures elapsed event time", () => {
+    const started = toolStart("t1", "bash", "execute");
+    const updated: AgentEvent = {
+      kind: "tool.updated",
+      from: src,
+      toolCallId: "t1",
+      status: "completed",
+      title: "Get-ChildItem",
+      details: {
+        locations: ["C:\\repo"],
+        input: '{\n  "command": "Get-ChildItem"\n}',
+        output: "a.txt",
+        error: undefined,
+      },
+    };
+    let view = reduceAll([started], 1_000);
+    view = reduceView(view, updated, 2_500);
+    const tool = view.tools[0];
+    expect(tool).toMatchObject({
+      title: "Get-ChildItem",
+      status: "completed",
+      details: { locations: ["C:\\repo"], output: "a.txt" },
+      durationMs: 1_500,
+    });
+  });
+
+  it("drops an exact replay of a user prompt after refresh", () => {
+    const view = reduceAll([
+      message("local-7", "run the recovery check", "user"),
+      toolStart("t1", "bash", "execute"),
+      message("local-7", "run the recovery check", "user"),
+    ]);
+    expect(view.stream.filter((entry) => entry.type === "user")).toHaveLength(1);
+    const user = view.stream.find((entry) => entry.type === "user");
+    expect(user !== undefined && "text" in user ? user.text : undefined).toBe("run the recovery check");
   });
 });
 

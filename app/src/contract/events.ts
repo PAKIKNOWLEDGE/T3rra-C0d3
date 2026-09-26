@@ -7,7 +7,7 @@
  *    provenance and the union can be machine-checked against the captured traces
  *  - rule 12 / no-invented-numbers: a wire field we cannot state honestly is *not* mapped
  *    (`usage_update` reports context-window fill; a per-turn total is a different quantity,
- *    so neither becomes a number on screen)
+ *    so only the context reading becomes a number on screen)
  *
  * `message.unmapped` exists on purpose: an unrecognised message is counted, never guessed.
  * Rule 5: `task` / `plan` / `memory` are not runtime concepts and have no place here.
@@ -58,15 +58,46 @@ export interface PendingPermission {
   readonly options: readonly PermissionOption[];
 }
 
+export interface ContextUsage {
+  readonly used: number;
+  readonly size: number;
+  readonly costAmount?: number;
+  readonly costCurrency?: string;
+}
+
+export interface ToolDetails {
+  readonly locations: readonly string[];
+  readonly input: string | undefined;
+  readonly output: string | undefined;
+  readonly error: string | undefined;
+}
+
 export type AgentEvent =
   | { readonly kind: "session.opened"; readonly from: EventSource; readonly sessionId: string }
   | { readonly kind: "sessions.updated"; readonly from: EventSource; readonly sessions: readonly SessionSummary[] }
   | { readonly kind: "sessions.removed"; readonly from: EventSource; readonly sessionId: string }
   | { readonly kind: "options.updated"; readonly from: EventSource; readonly options: readonly ConfigOption[] }
+  | { readonly kind: "usage.updated"; readonly from: EventSource; readonly usage: ContextUsage }
   | { readonly kind: "message.appended"; readonly from: EventSource; readonly role: "agent" | "user"; readonly messageId: string; readonly text: string }
   | { readonly kind: "thought.appended"; readonly from: EventSource; readonly messageId: string; readonly text: string }
-  | { readonly kind: "tool.started"; readonly from: EventSource; readonly toolCallId: string; readonly title: string; readonly hint: string }
-  | { readonly kind: "tool.updated"; readonly from: EventSource; readonly toolCallId: string; readonly status: string }
+  | {
+      readonly kind: "tool.started";
+      readonly from: EventSource;
+      readonly toolCallId: string;
+      readonly title: string;
+      readonly hint: string;
+      readonly status: string;
+      readonly details: ToolDetails;
+    }
+  | {
+      readonly kind: "tool.updated";
+      readonly from: EventSource;
+      readonly toolCallId: string;
+      readonly status: string;
+      readonly title?: string;
+      readonly hint?: string;
+      readonly details?: Partial<ToolDetails>;
+    }
   | { readonly kind: "permission.requested"; readonly from: EventSource; readonly requestId: string; readonly summary: string; readonly options: readonly PermissionOption[] }
   | { readonly kind: "permission.resolved"; readonly from: EventSource; readonly requestId: string; readonly optionId: string }
   | { readonly kind: "prompt.ended"; readonly from: EventSource; readonly stopReason: string }
@@ -96,6 +127,7 @@ export const EVENT_KINDS: readonly AgentEventKind[] = [
   "sessions.updated",
   "sessions.removed",
   "options.updated",
+  "usage.updated",
   "message.appended",
   "thought.appended",
   "tool.started",

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { resolveEngineCandidates } from "../app/src/engine/resolve.ts";
+import { isSupportedOpenCodeVersion, resolveEngineCandidates } from "../app/src/engine/resolve.ts";
 import { checkBoundary, checkDemo, collectObservations, parseCitedTracePaths, parseDocKindTable } from "../tools/lib.mjs";
 
 describe("engine resolution", () => {
@@ -7,15 +7,23 @@ describe("engine resolution", () => {
     const { candidates, reason } = resolveEngineCandidates({ T3RRA_ENGINE: "opencode", APPDATA: "C:\\roaming" });
     expect(reason).toBe("env-preference");
     expect(candidates[0]).toBe("opencode");
-    expect(candidates).toContain("omp");
+    expect(candidates).not.toContain("omp");
   });
 
   it("defaults to opencode first; T3RRA_ENGINE=omp is the escape hatch", () => {
     const { candidates, reason } = resolveEngineCandidates({ APPDATA: "C:\\roaming" });
     expect(reason).toBe("default-order");
     expect(candidates[0]).toBe("opencode");
-    expect(candidates).toContain("omp");
+    expect(candidates).not.toContain("omp");
     expect(resolveEngineCandidates({ T3RRA_ENGINE: "omp" }).candidates[0]).toBe("omp");
+    expect(resolveEngineCandidates({ T3RRA_ENGINE: "omp" }).candidates).not.toContain("opencode");
+  });
+
+  it("rejects opencode versions below the locked 1.18.x line", () => {
+    expect(isSupportedOpenCodeVersion("opencode 1.18.0")).toBe(true);
+    expect(isSupportedOpenCodeVersion("1.18.32")).toBe(true);
+    expect(isSupportedOpenCodeVersion("opencode 1.17.18")).toBe(false);
+    expect(isSupportedOpenCodeVersion("not a version")).toBe(false);
   });
 
   it("lets an explicit binary override everything, including the legacy variable", () => {

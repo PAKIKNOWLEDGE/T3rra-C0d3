@@ -17,17 +17,17 @@
 | --- | --- |
 | 项目是什么 | opencode 的桌面控制台前端（ARK 族设计语言，见 [`design.md`](./design.md)），产品代码 `app/` |
 | 引擎怎么接 | ACP stdio（桥）+ 通用 HTTP 透传 `/__t3/http` → 懒起 `opencode serve`（目前只用于 DELETE）。HALT 走 stdio notification，旧的 `/abort` 分流已于 `29f8ea0` 删除。**契约假设的正确性另见 [`engine-contract-audit.md`](./engine-contract-audit.md)** |
-| 工作目录 | **固定** `app/.sandbox`——**没有选真实项目根的 UI**（已知硬伤） |
+| 工作目录 | 默认 `app/.sandbox`；左栏可输入绝对项目目录并应用重启 |
 | 项目配置 | **app 内无入口**读写 `opencode.json` / `permission.*`（审批为何不问无处解释） |
 | 验收账 | 见 `status.md` §2：全部有代码；#1、#2c、#5–9（新外观下复看）、#10、#12（视觉第 3 代）待主人目视 |
-| 最大结构性空洞 | cwd 选择器、设置/配置面、diff/文件/终端/图片等工作面（HALT 已接） |
+| 最大结构性空洞 | 设置/配置面、diff/文件/终端/图片等工作面（HALT、cwd 已接） |
 
 ---
 
 ## 1. 结论
 
 核心最小闭环已有真实现：会话增删载、流式对话、工具行、markdown、reasoning、model/mode/effort、审批条、事件日志、静默判据、重启、HALT（#1，stdio `session/cancel` notification）。  
-结构性空洞：**① 无项目/cwd 选择 ② 无设置/配置面 ③ 无 diff/文件/终端/搜索/图片等工作面**。  
+结构性空洞：**① 无设置/配置面 ② 无 diff/文件/终端/搜索/图片等工作面**。
 HTTP 通道只接了一单：**DELETE**。diff、revert、pty、file、search 可以走同一通道，产品侧未接。
 
 ---
@@ -38,11 +38,11 @@ HTTP 通道只接了一单：**DELETE**。diff、revert、pty、file、search �
 
 | 能力 | 状态 | 证据 | 依赖 | 备注 |
 | --- | --- | --- | --- | --- |
-| 显式项目根 / PWD 选择与显示 | **partial** | 【源码】`engine-bridge.ts` `sandboxDir()`；左栏「Workspace」行 `#pCwd` 只读 | 纯 UI + 桥 | cwd **恒为** `app/.sandbox`，用户不能选真目录 |
-| `session/new` 传自定义 cwd | **partial** | 【源码】桥 `/spawn` 已收 `cwd`；`main.ts` 用 `facts.cwd` | 暴露 UI | 技术可通，缺选择器 |
-| 多根 / 多项目 | **missing** | 无代码 | 产品决策 + UI | 单一 sandbox |
-| 沙箱 vs 真 cwd | **partial** | 【源码】`sandboxDir()` 注释「never the owner's source」 | — | 刻意沙箱；切真目录 = 上一项 |
-| 项目配置（`opencode.json` / `permission.*=ask`）定位与编辑 | **missing** | 【文档】adapters §四；config schema 在 traces；app 无 config 读写 | 文件通道 + 设置面 | **#10 审批不触发的根因没有 UI 解释入口** |
+| 显式项目根 / PWD 选择与显示 | **present** | 左栏 `#cwdInput` + `#cwdBrowse` + `#cwdApply`；系统目录选择器确定后自动导入并重启 ACP，也可手输后应用 | 纯 UI + 桥 | 目录存在性由桥确认 |
+| `session/new` 传自定义 cwd | **present** | 【源码】桥 `/spawn` 收 `cwd`；`transport.spawn(cwd)`；`main.ts` 用 `facts.cwd` | — | 新引擎进程按所选目录启动 |
+| 多根 / 多项目 | **missing** | 无项目列表 | 产品决策 + UI | 当前一次只运行一个 cwd |
+| 沙箱 vs 真 cwd | **partial** | 【源码】`sandboxDir()` 仍是默认值 | — | 未选择时仍用 `app/.sandbox`；选中后可切真目录 |
+| 项目配置（`opencode.json` / `permission.*=ask`）定位与编辑 | **partial** | 左栏「审批策略」读写项目级 `permission.edit`；其它规则仍需手工编辑 | 桥端 cwd 配置读写；上游加载路径与 `Config.update` 路径不一致 | **#10 现可解释并切换审批触发条件** |
 
 ### B. 会话
 
@@ -70,7 +70,7 @@ HTTP 通道只接了一单：**DELETE**。diff、revert、pty、file、search �
 | 能力 | 状态 | 证据 | 依赖 | 备注 |
 | --- | --- | --- | --- | --- |
 | model / mode / effort / 任意 configOptions | **present** | 按 category 泛化，无 id 白名单 | ACP | — |
-| permission（ask/allow）展示与设置 | **missing** | 在**配置文件**非 session option | 配置面 | 审批默认放行的根因 |
+| permission（ask/allow）展示与设置 | **partial** | 左栏「审批策略」覆盖 `permission.edit`；其它 permission key 未接 | 配置面 | 默认放行原因可见、可切换 |
 | 应用设置面板 | **missing** | 全仓无 | 纯 UI | — |
 | 主题仅暗色外壳 | **N/A** | 设计锁定（[`design.md`](./design.md)） | — | 不是缺口 |
 | 语言 i18n | **missing**（低） | `lang=zh-CN` 写死 | 纯 UI | — |
@@ -82,7 +82,7 @@ HTTP 通道只接了一单：**DELETE**。diff、revert、pty、file、search �
 | 三档审批 UI | **partial**（#10 待目视） | 回包与 trace 同形【实测】 | 需 `permission.*=ask` | 默认永不触发；`optionId` 字面量 `once/always/reject`；`cancelled`→折成 reject；批准后引擎会反向调 `fs/write_text_file`（我方未实现）；权限按会话串行。见审计 F9/F10 |
 | 审批时 diff 预览 | **missing** | HTTP `session.diff` 存在【文档】 | HTTP + UI | 盲签风险 |
 | allow_always 语义 | **【未验】** | adapters §六.1 | 探针 | 点「始终允许」前须知 |
-| 「当前配置不会问你」 | **missing** | adapters §六.2 | 读配置 | 现只写「没有请求」 |
+| 「当前配置不会问你」 | **present** | 启动后读取 cwd 下 `opencode.json`，左栏显示「默认放行」等策略；迟到读取不会覆盖新选择 | 读配置 | 仍需主人目视验收审批卡触发 |
 
 ### F. 文件与工具面
 
@@ -137,15 +137,14 @@ HTTP 通道只接了一单：**DELETE**。diff、revert、pty、file、search �
 供主人取舍；**不是已决定计划**。现行的建议顺序见 [`status.md`](./status.md) §4.5：
 
 1. ~~HALT（验收 #1）~~ **已实现，待目视**：stdio notification  
-2. **项目根 / cwd 选择器**——固定 sandbox = 不能对真项目干活  
-3. **permission 配置可见/可设**——否则 #10 永看不到真请求  
-4. 多会话并发 / 后台跑  
-5. fork / resume / close 接线（ACP 已声明）  
-6. 审批时 diff  
-7. 粘贴图片  
-8. 导出会话  
-9. 工具结果体（规则 23 先改 adapters）  
-10. 重试 / 编辑末条（引擎机制先【未验】）
+2. **permission 配置可见/可设**——否则 #10 永看不到真请求
+3. 多会话并发 / 后台跑
+4. fork / resume / close 接线（ACP 已声明）
+5. 审批时 diff
+6. 粘贴图片
+7. 导出会话
+8. 工具结果体（规则 23 先改 adapters）
+9. 重试 / 编辑末条（引擎机制先【未验】）
 
 并列：设置面板、PTY、文件浏览器、搜索——依赖重，建议 1–5 之后。
 

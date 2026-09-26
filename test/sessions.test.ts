@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { mapResponse, mapSessionList } from "../app/src/engine/responses.ts";
 import { reduceAll } from "../app/src/view/derive.ts";
-import { deleteSessionPath } from "../app/src/engine/engine-http.ts";
+import { deleteSessionPath, projectConfigPath } from "../app/src/engine/engine-http.ts";
 
 const sampleList = {
   sessions: [
@@ -48,5 +48,11 @@ describe("session list mapping", () => {
 describe("delete path", () => {
   it("builds DELETE /session/{id} without inventing query junk", () => {
     expect(deleteSessionPath("ses_aaa111")).toBe("/session/ses_aaa111");
+  });
+});
+
+describe("project config path", () => {
+  it("routes config reads and writes to the selected cwd", () => {
+    expect(projectConfigPath("C:\\work space\\demo")).toBe("/config?directory=C%3A%5Cwork%20space%5Cdemo");
   });
 });

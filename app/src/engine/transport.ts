@@ -22,7 +22,9 @@ export interface TransportHttpResult {
 
 export interface Transport {
   probe(): Promise<TransportProbe>;
-  spawn(): Promise<void>;
+  spawn(cwd?: string): Promise<void>;
+  chooseFolder(): Promise<string | undefined>;
+  projectConfig(method: "GET" | "PATCH", cwd: string, config?: unknown): Promise<TransportHttpResult>;
   write(line: string): Promise<void>;
   kill(): Promise<void>;
   /** Generic HTTP tunnel to the engine REST face (via the bridge's `opencode serve`). */
@@ -37,6 +39,7 @@ export interface Transport {
 }
 
 const PREFIX = "/__t3";
+const CHOOSE_FOLDER_TIMEOUT_MS = 65_000;
 
 export const createBridgeTransport = (clientId: string): Transport => {
   const query = `client=${encodeURIComponent(clientId)}`;
@@ -94,9 +97,39 @@ export const createBridgeTransport = (clientId: string): Transport => {
       const response = await fetch(`${PREFIX}/probe?${query}`);
       return (await response.json()) as TransportProbe;
     },
-    async spawn(): Promise<void> {
+    async spawn(cwd?: string): Promise<void> {
       openStream();
-      await post("/spawn", {});
+      await post("/spawn", cwd === undefined ? {} : { cwd });
+    },
+    async chooseFolder(): Promise<string | undefined> {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), CHOOSE_FOLDER_TIMEOUT_MS);
+      let response: Response;
+      try {
+        response = await fetch(`${PREFIX}/choose-folder?${query}`, { method: "POST", signal: controller.signal });
+      } catch (error: unknown) {
+        if (error instanceof DOMException && error.name === "AbortError") throw new Error("folder picker timed out");
+        throw error;
+      } finally {
+        clearTimeout(timeout);
+      }
+      const text = await response.text().catch(() => "");
+      if (!response.ok) throw new Error(`/choose-folder failed: ${response.status} ${text.slice(0, 200)}`);
+      try {
+        const payload = JSON.parse(text) as { path?: unknown };
+        return typeof payload.path === "string" && payload.path !== "" ? payload.path : undefined;
+      } catch {
+        throw new Error("/choose-folder returned invalid JSON");
+      }
+    },
+    async projectConfig(method: "GET" | "PATCH", cwd: string, config?: unknown): Promise<TransportHttpResult> {
+      const response = await fetch(`${PREFIX}/project-config?${query}&cwd=${encodeURIComponent(cwd)}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ method, config: config ?? null }),
+      });
+      const text = await response.text().catch(() => "");
+      return { status: response.status, text };
     },
     async write(line: string): Promise<void> {
       // The bridge supplies the frame terminator, exactly as a byte-blind shell would.

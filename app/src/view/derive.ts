@@ -11,9 +11,9 @@
  * so the conversation view can interleave tool rows without inventing sequence.
  */
 
-import type { AgentEvent, AgentEventKind, ConfigOption, PendingPermission, SessionSummary } from "../contract/events.ts";
+import type { AgentEvent, AgentEventKind, ConfigOption, ContextUsage, PendingPermission, SessionSummary, ToolDetails } from "../contract/events.ts";
 
-export type BlockName = "session" | "options" | "stream" | "tools" | "transport";
+export type BlockName = "session" | "options" | "usage" | "stream" | "tools" | "transport";
 
 export type StreamEntry =
   | {
@@ -29,6 +29,10 @@ export type StreamEntry =
       readonly title: string;
       readonly hint: string;
       readonly status: string;
+      readonly details: ToolDetails;
+      readonly startedAtMs: number;
+      readonly updatedAtMs: number;
+      readonly durationMs: number;
       readonly atMs: number;
     };
 
@@ -37,11 +41,16 @@ export interface ToolEntry {
   readonly title: string;
   readonly hint: string;
   readonly status: string;
+  readonly details: ToolDetails;
+  readonly startedAtMs: number;
+  readonly updatedAtMs: number;
+  readonly durationMs: number;
 }
 
 export interface ConsoleView {
   readonly sessionId: string | undefined;
   readonly options: readonly ConfigOption[];
+  readonly usage: ContextUsage | undefined;
   readonly stream: readonly StreamEntry[];
   readonly tools: readonly ToolEntry[];
   readonly sessions: readonly SessionSummary[];
@@ -62,7 +71,7 @@ export interface ConsoleView {
   readonly from: Readonly<Record<BlockName, readonly AgentEventKind[]>>;
 }
 
-export const VIEW_BLOCKS: readonly BlockName[] = ["session", "options", "stream", "tools", "transport"];
+export const VIEW_BLOCKS: readonly BlockName[] = ["session", "options", "usage", "stream", "tools", "transport"];
 
 /**
  * Each block declares the event kinds it consumes. This is a *static* declaration on purpose:
@@ -72,6 +81,7 @@ export const VIEW_BLOCKS: readonly BlockName[] = ["session", "options", "stream"
 export const BLOCK_PROVENANCE: Readonly<Record<BlockName, readonly AgentEventKind[]>> = {
   session: ["session.opened", "sessions.updated", "sessions.unavailable", "sessions.removed", "permission.requested", "permission.resolved", "prompt.ended", "prompt.failed", "permission.cancelled"],
   options: ["options.updated"],
+  usage: ["usage.updated"],
   stream: ["message.appended", "thought.appended", "tool.started", "tool.updated"],
   tools: ["tool.started", "tool.updated"],
   transport: ["engine.stderr", "engine.exited", "link.down", "message.unmapped"],
@@ -80,6 +90,7 @@ export const BLOCK_PROVENANCE: Readonly<Record<BlockName, readonly AgentEventKin
 export const emptyView = (): ConsoleView => ({
   sessionId: undefined,
   options: [],
+  usage: undefined,
   stream: [],
   tools: [],
   sessions: [],
@@ -105,6 +116,12 @@ const appendTextChunk = (
   if (last !== undefined && last.type !== "tool" && last.key === entry.key && "text" in last) {
     return [...stream.slice(0, -1), { ...last, text: last.text + entry.text }];
   }
+  // A refresh can replay the same persisted user message after a local copy has already
+  // been restored. Drop only an exact duplicate with a real message id; distinct turns may
+  // legitimately reuse the same text, and empty ids are not safe identities.
+  if (entry.type === "user" && entry.key !== "user:" && stream.some((item) => item.type === "user" && item.key === entry.key && item.text === entry.text)) {
+    return stream;
+  }
   if (stream.some((item) => item.key === entry.key)) {
     return [...stream, { ...entry, key: `${entry.key}@${stream.length}` }];
   }
@@ -119,8 +136,15 @@ const upsertTool = (
   if (index < 0) return [...stream, entry];
   const existing = stream[index];
   if (existing === undefined || existing.type !== "tool") return [...stream, entry];
-  return [...stream.slice(0, index), { ...existing, ...entry, atMs: existing.atMs }, ...stream.slice(index + 1)];
+  return [...stream.slice(0, index), { ...existing, ...entry, atMs: existing.atMs, startedAtMs: existing.startedAtMs }, ...stream.slice(index + 1)];
 };
+
+const mergeToolDetails = (current: ToolDetails | undefined, patch: Partial<ToolDetails> | undefined): ToolDetails => ({
+  locations: patch?.locations === undefined || patch.locations.length === 0 ? current?.locations ?? [] : patch.locations,
+  input: patch?.input ?? current?.input,
+  output: patch?.output ?? current?.output,
+  error: patch?.error ?? current?.error,
+});
 
 export const reduceView = (view: ConsoleView, event: AgentEvent, nowMs?: number): ConsoleView => {
   const at = nowMs ?? 0;
@@ -146,6 +170,9 @@ export const reduceView = (view: ConsoleView, event: AgentEvent, nowMs?: number)
         // A runtime that re-declares its options re-declares the whole list; an empty list
         // means "none declared yet", which is why it is not treated as a removal.
       };
+
+    case "usage.updated":
+      return { ...view, usage: event.usage };
 
     case "message.appended":
       return {
@@ -173,6 +200,16 @@ export const reduceView = (view: ConsoleView, event: AgentEvent, nowMs?: number)
       const key = `tool:${event.toolCallId}`;
       const knownInStream = view.stream.some((entry) => entry.key === key);
       const knownInTools = view.tools.some((tool) => tool.toolCallId === event.toolCallId);
+      const snapshot = {
+        toolCallId: event.toolCallId,
+        title: event.title,
+        hint: event.hint,
+        status: event.status,
+        details: event.details,
+        startedAtMs: at,
+        updatedAtMs: at,
+        durationMs: 0,
+      };
       return {
         ...view,
         stream: knownInStream
@@ -182,36 +219,37 @@ export const reduceView = (view: ConsoleView, event: AgentEvent, nowMs?: number)
               {
                 key,
                 type: "tool",
-                toolCallId: event.toolCallId,
-                title: event.title,
-                hint: event.hint,
-                status: "running",
+                ...snapshot,
                 atMs: at,
               },
             ],
         tools: knownInTools
           ? view.tools
-          : [...view.tools, { toolCallId: event.toolCallId, title: event.title, hint: event.hint, status: "running" }],
+          : [...view.tools, snapshot],
       };
     }
 
     case "tool.updated": {
       const key = `tool:${event.toolCallId}`;
       const tool = view.tools.find((item) => item.toolCallId === event.toolCallId);
+      const streamTool = view.stream.find((item): item is Extract<StreamEntry, { type: "tool" }> => item.type === "tool" && item.toolCallId === event.toolCallId);
+      const startedAtMs = tool?.startedAtMs ?? streamTool?.startedAtMs ?? at;
+      const snapshot = {
+        toolCallId: event.toolCallId,
+        title: event.title ?? tool?.title ?? streamTool?.title ?? event.toolCallId,
+        hint: event.hint ?? tool?.hint ?? streamTool?.hint ?? "",
+        status: event.status,
+        details: mergeToolDetails(tool?.details ?? streamTool?.details, event.details),
+        startedAtMs,
+        updatedAtMs: at,
+        durationMs: Math.max(0, at - startedAtMs),
+      };
       return {
         ...view,
-        stream: upsertTool(view.stream, {
-          key,
-          type: "tool",
-          toolCallId: event.toolCallId,
-          title: tool?.title ?? event.toolCallId,
-          hint: tool?.hint ?? "",
-          status: event.status,
-          atMs: at,
-        }),
+        stream: upsertTool(view.stream, { key, type: "tool", ...snapshot, atMs: streamTool?.atMs ?? at }),
         tools: view.tools.some((item) => item.toolCallId === event.toolCallId)
-          ? view.tools.map((item) => (item.toolCallId === event.toolCallId ? { ...item, status: event.status } : item))
-          : view.tools,
+          ? view.tools.map((item) => (item.toolCallId === event.toolCallId ? snapshot : item))
+          : [...view.tools, snapshot],
       };
     }
 

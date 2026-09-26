@@ -10,7 +10,7 @@
  *  - invent a number: counts are counted from the stream, times come from the clock, and the
  *    silence report (×8 / ×25 from cadence.ts) is shown only once it is established;
  *  - build a control it cannot honour: mode/model/effort come from the runtime's own list,
- *    work-order cards are not clickable (the contract carries no tool output to open), and
+ *    work-order cards expose only fields the contract really carries, and
  *    the input stays disabled until the engine is up.
  */
 
@@ -41,6 +41,7 @@ export interface SessionFacts {
   readonly topic?: string | undefined;
   readonly binary?: string | undefined;
   readonly cwd?: string | undefined;
+  readonly permissionEdit?: "default" | "ask" | "allow" | "deny" | undefined;
   readonly exit?: string | undefined;
   readonly lastError?: string | undefined;
   readonly elapsedSeconds?: number | undefined;
@@ -59,6 +60,11 @@ export interface ConsoleHandles {
   onNewSession(handler: () => void): void;
   onSessionCreate(handler: () => void): void;
   onSessionsRefresh(handler: () => void): void;
+  onCwdApply(handler: (cwd: string) => void): void;
+  onCwdBrowse(handler: () => void): void;
+  onPermissionPolicyChange(handler: (policy: "default" | "ask" | "allow" | "deny") => void): void;
+  setCwdInput(value: string): void;
+  setPermissionPolicy(value: "default" | "ask" | "allow" | "deny"): void;
   onSessionLoad(handler: (sessionId: string, cwd: string) => void): void;
   onSessionDelete(handler: (sessionId: string) => void): void;
   onPermissionSelect(handler: (requestId: string, optionId: string) => void): void;
@@ -126,6 +132,9 @@ export const mountConsole = (): ConsoleHandles => {
   const topic = need("topic");
   const resOrders = need("resOrders");
   const resTime = need("resTime");
+  const resContextRing = need("resContextRing");
+  const resContextPct = need("resContextPct");
+  const resContextUsed = need("resContextUsed");
   const engine = need("engine");
   const linkLabel = need("linkLabel");
   const metaModel = need("metaModel");
@@ -153,6 +162,10 @@ export const mountConsole = (): ConsoleHandles => {
   const pPermission = need("pPermission");
   const pBinary = need("pBinary");
   const pCwd = need("pCwd");
+  const cwdInput = need<HTMLInputElement>("cwdInput");
+  const cwdApply = need<HTMLButtonElement>("cwdApply");
+  const cwdBrowse = need<HTMLButtonElement>("cwdBrowse");
+  const permissionPolicy = need<HTMLSelectElement>("permissionPolicy");
   const pExit = need("pExit");
   const pLastError = need("pLastError");
   const pUnmapped = need("pUnmapped");
@@ -175,6 +188,13 @@ export const mountConsole = (): ConsoleHandles => {
   const submit = need<HTMLButtonElement>("promptSubmit");
   const halt = need<HTMLButtonElement>("halt");
   const restart = need<HTMLButtonElement>("restart");
+  const toolInspector = need("toolInspector");
+  const toolInspectorClose = need<HTMLButtonElement>("toolInspectorClose");
+  const toolInspectorKind = need("toolInspectorKind");
+  const toolInspectorTitle = need("toolInspectorTitle");
+  const toolInspectorStatus = need("toolInspectorStatus");
+  const toolInspectorId = need("toolInspectorId");
+  const toolInspectorBody = need("toolInspectorBody");
 
   let optionHandler: (optionId: string, value: string) => void = () => {};
   let sessionLoadHandler: (sessionId: string, cwd: string) => void = () => {};
@@ -200,6 +220,8 @@ export const mountConsole = (): ConsoleHandles => {
   let outcomeBaseline: { stop: string | undefined; error: string | undefined } | undefined;
   /** Thought blocks the operator collapsed — keyed by stream key, survives re-render. */
   const collapsedThoughts = new Set<string>();
+  /** One floating inspector is open at a time, keyed by the engine's stable tool call id. */
+  let openToolId: string | undefined;
 
   const formatStamp = (atMs: number): string => {
     if (atMs <= 0) return "";
@@ -262,6 +284,60 @@ export const mountConsole = (): ConsoleHandles => {
     return status;
   };
 
+  const durationText = (durationMs: number): string => {
+    if (!Number.isFinite(durationMs) || durationMs < 0) return "未报告";
+    if (durationMs < 1000) return `${Math.round(durationMs)}ms`;
+    return `${(durationMs / 1000).toFixed(1)}s`;
+  };
+
+  const detailText = (value: string | undefined): string => value === undefined || value === "" ? "未报告" : value;
+
+  const detailRow = (label: string, value: string): HTMLElement => {
+    const row = el("div", "row");
+    row.append(el("span", "k", label), el("span", "v", value));
+    return row;
+  };
+
+  const closeToolInspector = (): void => {
+    openToolId = undefined;
+    root.dataset["toolOpen"] = "false";
+    toolInspector.setAttribute("aria-hidden", "true");
+    toolInspectorBody.replaceChildren(el("div", "empty", "点击工单卡查看引擎报告的详情"));
+  };
+
+  const renderToolInspector = (view: ConsoleView | undefined): void => {
+    const entry = view?.stream.find((item): item is Extract<StreamEntry, { type: "tool" }> => item.type === "tool" && item.toolCallId === openToolId);
+    if (entry === undefined) {
+      closeToolInspector();
+      return;
+    }
+    const state = toolState(entry.status);
+    const kind = kindOf(entry.hint);
+    const accent = state === "fail" ? "var(--red)" : kind.cls === "k-exec" ? "var(--yellow)" : kind.cls === "k-read" ? "var(--cyan)" : kind.cls === "k-edit" ? "var(--lime)" : "var(--gray-k)";
+    toolInspector.style.setProperty("--inspector-k", accent);
+    toolInspectorKind.textContent = entry.hint === "" ? "TOOL" : entry.hint.toUpperCase();
+    toolInspectorTitle.textContent = entry.title === "" ? "（无标题工具）" : entry.title;
+    toolInspectorStatus.textContent = stateText(entry.status, state);
+    toolInspectorId.textContent = entry.toolCallId;
+    toolInspectorBody.replaceChildren();
+    const locations = entry.details.locations.join("\n");
+    const hasDetails = locations !== "" || entry.details.input !== undefined || entry.details.output !== undefined || entry.details.error !== undefined;
+    if (!hasDetails) {
+      toolInspectorBody.append(el("div", "empty", "引擎未报告更多过程"));
+    } else {
+      toolInspectorBody.append(
+        detailRow("目标", detailText(locations)),
+        detailRow("参数", detailText(entry.details.input)),
+        detailRow("状态", detailText(entry.status)),
+        detailRow("耗时", durationText(entry.durationMs)),
+        detailRow("输出", detailText(entry.details.output)),
+        detailRow("错误", detailText(entry.details.error)),
+      );
+    }
+    root.dataset["toolOpen"] = "true";
+    toolInspector.setAttribute("aria-hidden", "false");
+  };
+
   /** Right-column index of every work order in the session. */
   const renderTools = (view: ConsoleView): void => {
     tools.replaceChildren();
@@ -282,12 +358,16 @@ export const mountConsole = (): ConsoleHandles => {
     });
   };
 
-  /** One work order = one base-station card (DESIGN-LANGUAGE §5.2). Not a button: there is no
-   *  tool output in the contract to open, and a card that opens to nothing is a dead control. */
+  /** One work order = one base-station card (DESIGN-LANGUAGE §5.2). Click opens only real
+   *  fields reported by the engine; absence stays visible instead of being filled with guesses. */
   const renderStation = (entry: Extract<StreamEntry, { type: "tool" }>, ordinal: number): HTMLElement => {
     const state = toolState(entry.status);
     const kind = kindOf(entry.hint);
-    const card = el("div", `st ${state === "fail" ? "k-fail" : kind.cls}${state === "run" ? " is-run" : ""}`);
+    const card = el("button", `st ${state === "fail" ? "k-fail" : kind.cls}${state === "run" ? " is-run" : ""}`);
+    card.type = "button";
+    const expanded = openToolId === entry.toolCallId;
+    card.setAttribute("aria-expanded", String(expanded));
+    card.setAttribute("aria-label", `${entry.title === "" ? "工具" : entry.title} · ${expanded ? "收起详情" : "展开详情"}`);
     card.append(icon(kind.icon, "i wm"));
     const name = el("span", "nm");
     const bars = el("span", "bars");
@@ -302,7 +382,15 @@ export const mountConsole = (): ConsoleHandles => {
     const declared = el("span", "en kd", `${kind.zh} · ${entry.hint === "" ? "kind 未声明" : entry.hint} · ${formatStamp(entry.atMs)}`);
     const number = el("span", "n");
     number.append(el("small", undefined, "#"), document.createTextNode(pad2(ordinal)));
-    card.append(name, status, declared, number);
+    card.append(name, status, declared, number, el("span", "open-mark", expanded ? "‹" : "›"));
+    card.addEventListener("click", () => {
+      if (openToolId === entry.toolCallId) closeToolInspector();
+      else openToolId = entry.toolCallId;
+      if (lastView !== undefined) {
+        renderStream(lastView);
+        renderToolInspector(lastView);
+      }
+    });
     return card;
   };
 
@@ -631,6 +719,24 @@ export const mountConsole = (): ConsoleHandles => {
     renderWait();
   };
 
+  const formatCount = (value: number): string => new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(Math.round(value));
+  const renderUsage = (view: ConsoleView): void => {
+    const usage = view.usage;
+    if (usage === undefined) {
+      resContextRing.style.setProperty("--usage-pct", "0%");
+      resContextPct.textContent = "--";
+      resContextUsed.textContent = "未报告";
+      resContextRing.setAttribute("aria-label", "上下文用量未报告");
+      return;
+    }
+    const ratio = Math.max(0, Math.min(1, usage.used / usage.size));
+    const percent = Math.round(ratio * 100);
+    resContextRing.style.setProperty("--usage-pct", `${percent}%`);
+    resContextPct.textContent = `${percent}%`;
+    resContextUsed.textContent = `${formatCount(usage.used)} / ${formatCount(usage.size)}`;
+    resContextRing.setAttribute("aria-label", `上下文用量 ${percent}%`);
+  };
+
   const renderSignal = (): void => {
     const silence = facts.silence;
     const samples = silence?.samples ?? 0;
@@ -657,6 +763,9 @@ export const mountConsole = (): ConsoleHandles => {
   };
   infoToggle.addEventListener("click", () => syncExpert(infoToggle.getAttribute("aria-pressed") !== "true"));
   syncExpert(false);
+  toolInspectorClose.addEventListener("click", closeToolInspector);
+  root.dataset["toolOpen"] = "false";
+  toolInspector.setAttribute("aria-hidden", "true");
 
   const applyView = (view: "process" | "events"): void => {
     root.dataset["view"] = view;
@@ -711,6 +820,31 @@ export const mountConsole = (): ConsoleHandles => {
     onSessionsRefresh(handler): void {
       sessionsRefresh.addEventListener("click", handler);
       sessionsRefreshHandler = handler; // the failure-state RETRY reuses this one action
+    },
+    onCwdApply(handler): void {
+      const fire = (): void => handler(cwdInput.value.trim());
+      cwdApply.addEventListener("click", fire);
+      cwdInput.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          fire();
+        }
+      });
+    },
+    onCwdBrowse(handler): void {
+      cwdBrowse.addEventListener("click", handler);
+    },
+    onPermissionPolicyChange(handler): void {
+      permissionPolicy.addEventListener("change", () => {
+        const value = permissionPolicy.value;
+        handler(value === "ask" || value === "allow" || value === "deny" ? value : "default");
+      });
+    },
+    setCwdInput(value): void {
+      cwdInput.value = value;
+    },
+    setPermissionPolicy(value): void {
+      permissionPolicy.value = value;
     },
     onSessionLoad(handler): void {
       sessionLoadHandler = handler;
@@ -773,6 +907,8 @@ export const mountConsole = (): ConsoleHandles => {
       if (next.startedAt !== undefined) pStarted.textContent = next.startedAt;
       if (next.binary !== undefined) pBinary.textContent = next.binary === "NOT FOUND" ? "没找到" : next.binary;
       if (next.cwd !== undefined) pCwd.textContent = next.cwd === "NOT STATED" ? "未告知" : next.cwd;
+      if (next.cwd !== undefined && document.activeElement !== cwdInput) cwdInput.value = next.cwd === "NOT STATED" ? "" : next.cwd;
+      if (next.permissionEdit !== undefined && document.activeElement !== permissionPolicy) permissionPolicy.value = next.permissionEdit;
       if (next.exit !== undefined) pExit.textContent = next.exit;
       if (next.lastError !== undefined) pLastError.textContent = next.lastError;
       if (next.phase !== undefined) phase.textContent = next.phase;
@@ -814,7 +950,9 @@ export const mountConsole = (): ConsoleHandles => {
 
       renderTitle(view);
       renderCounts(view);
+      renderUsage(view);
       renderStream(view);
+      renderToolInspector(view);
       renderTools(view);
       renderOptions(view);
       renderSessions(view);

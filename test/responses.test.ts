@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { mapResponse, optionsEventOf } from "../app/src/engine/responses.ts";
+import { mapResponse, optionsEventOf, sessionPresentInList, shouldApplySessionLoad } from "../app/src/engine/responses.ts";
 import { reduceAll } from "../app/src/view/derive.ts";
 
 /** The real payload shape, taken from a live session (traces/opencode). */
@@ -31,13 +31,48 @@ describe("response mapping", () => {
     expect(view.options).toHaveLength(1);
   });
 
+  it("correlates a session/load response that only returns configOptions", () => {
+    const mapping = mapResponse("session/load", { configOptions: liveOptions }, "ses_loaded");
+    expect(mapping.sessionId).toBe("ses_loaded");
+    expect(mapping.events[0]).toMatchObject({ kind: "session.opened", sessionId: "ses_loaded" });
+    expect(reduceAll(mapping.events).sessionId).toBe("ses_loaded");
+  });
+
+  it("does not invent a session id for session/load without request context", () => {
+    const mapping = mapResponse("session/load", { configOptions: liveOptions });
+    expect(mapping.sessionId).toBeUndefined();
+    expect(mapping.events).toEqual([
+      expect.objectContaining({ kind: "options.updated" }),
+    ]);
+  });
+
+  it("ignores a late load response after the operator selected another session", () => {
+    expect(shouldApplySessionLoad("session/load", "ses_old", "ses_new")).toBe(false);
+    expect(shouldApplySessionLoad("session/load", "ses_new", "ses_new")).toBe(true);
+    expect(shouldApplySessionLoad("session/new", undefined, "ses_new")).toBe(true);
+  });
+
+  it("recognises a successful session/close response without fabricating an event", () => {
+    const mapping = mapResponse("session/close", {});
+    expect(mapping.recognised).toBe(true);
+    expect(mapping.events).toEqual([]);
+  });
+
+  it("only confirms deletion when session/list no longer contains the target", () => {
+    const present = mapResponse("session/list", { sessions: [{ sessionId: "ses_keep" }] }).events;
+    const absent = mapResponse("session/list", { sessions: [] }).events;
+    expect(sessionPresentInList(present, "ses_keep")).toBe(true);
+    expect(sessionPresentInList(absent, "ses_keep")).toBe(false);
+    expect(sessionPresentInList([], "ses_keep")).toBeUndefined();
+  });
+
   it("takes the engine's own name off initialize and nothing else", () => {
     const mapping = mapResponse("initialize", { agentInfo: { name: "OpenCode", version: "1.18.32" }, authMethods: [] });
     expect(mapping.agentName).toBe("OpenCode 1.18.32");
     expect(mapping.events).toEqual([]);
   });
 
-  it("ends a turn on the prompt response, and never maps usage into a number", () => {
+  it("ends a turn on the prompt response without confusing per-turn usage with context fill", () => {
     const mapping = mapResponse("session/prompt", { stopReason: "end_turn", usage: { totalTokens: 10344 } });
     expect(mapping.events).toEqual([
       { kind: "prompt.ended", from: { method: "session/prompt.response", variant: undefined }, stopReason: "end_turn" },

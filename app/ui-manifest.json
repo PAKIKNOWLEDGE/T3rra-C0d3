@@ -33,6 +33,22 @@
       "wired": true,
       "role": "session list: reload the engine's session list"
     },
+    "cwdInput": {
+      "wired": true,
+      "role": "workspace: editable project directory used for the next engine restart"
+    },
+    "cwdBrowse": {
+      "wired": true,
+      "role": "workspace: choose a directory in the operating system folder picker and import it"
+    },
+    "cwdApply": {
+      "wired": true,
+      "role": "workspace: apply the directory and restart the engine"
+    },
+    "permissionPolicy": {
+      "wired": true,
+      "role": "workspace: read and update project permission.edit policy"
+    },
     "promptInput": {
       "wired": true,
       "role": "dock: instruction box (Enter sends, Shift+Enter newline, Esc halts a running turn)"
@@ -70,6 +86,28 @@
     "processView": {
       "static": "the RECORD surface itself; reached by the viewProcess button"
     },
+    "toolInspector": {
+      "static": "floating work-order detail panel; content is rendered from the selected tool event"
+    },
+    "toolInspectorKind": {
+      "static": "text label for the selected tool kind"
+    },
+    "toolInspectorTitle": {
+      "static": "text title for the selected work order"
+    },
+    "toolInspectorStatus": {
+      "static": "text status for the selected work order"
+    },
+    "toolInspectorId": {
+      "static": "text tool call identifier for the selected work order"
+    },
+    "toolInspectorBody": {
+      "static": "container for renderer-created work-order detail rows"
+    },
+    "toolInspectorClose": {
+      "wired": true,
+      "role": "floating work-order detail panel close action"
+    },
     "transportPanel": {
       "static": "section shown or hidden by infoToggle; contains no controls"
     },
@@ -84,6 +122,36 @@
     },
     "approvalActions": {
       "static": "container only; buttons created from the engine's permission options"
+    }
+  },
+  "dynamic": {
+    "button": {
+      "wired": true,
+      "role": "renderer-created action button; concrete label comes from runtime state"
+    },
+    "select": {
+      "wired": true,
+      "role": "renderer-created runtime option selector"
+    },
+    "thought-toggle": {
+      "wired": true,
+      "role": "renderer-created thought fold toggle"
+    },
+    "bluetile": {
+      "wired": true,
+      "role": "renderer-created empty-state new-session action"
+    },
+    "del": {
+      "wired": true,
+      "role": "renderer-created session delete action"
+    },
+    "mini": {
+      "wired": true,
+      "role": "renderer-created recovery or create action"
+    },
+    "go": {
+      "wired": true,
+      "role": "renderer-created recovery or create action"
     }
   }
 }

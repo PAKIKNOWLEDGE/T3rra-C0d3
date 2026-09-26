@@ -94,14 +94,60 @@ describe("translation specifics", () => {
 
   it("uses the tool title as identity, not the kind", () => {
     // The captured traces show `kind` mislabelling a directory listing as `read`.
-    const { events } = translateLine(line({ sessionUpdate: "tool_call", toolCallId: "t1", title: "List files", kind: "read" }));
-    expect(events[0]).toMatchObject({ kind: "tool.started", title: "List files", hint: "read" });
+    const { events } = translateLine(line({
+      sessionUpdate: "tool_call",
+      toolCallId: "t1",
+      title: "List files",
+      kind: "read",
+      status: "pending",
+      locations: [{ path: "C:\\repo" }],
+      rawInput: { path: "C:\\repo" },
+    }));
+    expect(events[0]).toMatchObject({
+      kind: "tool.started",
+      title: "List files",
+      hint: "read",
+      status: "pending",
+      details: { locations: ["C:\\repo"] },
+    });
+    expect((events[0] as Extract<AgentEvent, { kind: "tool.started" }>).details.input).toContain("path");
   });
 
-  it("counts unmapped traffic instead of guessing at it", () => {
+  it("keeps real tool update details instead of only the status", () => {
+    const { events } = translateLine(line({
+      sessionUpdate: "tool_call_update",
+      toolCallId: "t1",
+      status: "completed",
+      title: "Get-ChildItem C:\\repo",
+      kind: "execute",
+      locations: [{ path: "C:\\repo" }],
+      rawInput: { command: "Get-ChildItem C:\\repo" },
+      content: [{ type: "content", content: { type: "text", text: "a.txt" } }],
+      rawOutput: { output: "a.txt", metadata: { exit: 0 } },
+    }));
+    expect(events[0]).toMatchObject({
+      kind: "tool.updated",
+      status: "completed",
+      title: "Get-ChildItem C:\\repo",
+      hint: "execute",
+      details: {
+        locations: ["C:\\repo"],
+        output: "a.txt",
+        },
+    });
+    expect((events[0] as Extract<AgentEvent, { kind: "tool.updated" }>).details?.input).toContain("Get-ChildItem");
+  });
+
+  it("maps a real usage update to context fill and cost", () => {
+    const { events } = translateLine(line({ sessionUpdate: "usage_update", used: 76000, size: 200000, cost: { amount: 0.12, currency: "USD" } }));
+    expect(events[0]).toMatchObject({ kind: "usage.updated", usage: { used: 76000, size: 200000, costAmount: 0.12, costCurrency: "USD" } });
+    expect(reduceAll(events).usage).toMatchObject({ used: 76000, size: 200000 });
+  });
+
+  it("keeps malformed usage absent instead of inventing a number", () => {
     const { events } = translateLine(line({ sessionUpdate: "usage_update", size: 12345 }));
     expect(events[0]?.kind).toBe("message.unmapped");
-    expect(reduceAll(events).unmapped).toBe(1);
+    expect(reduceAll(events).usage).toBeUndefined();
   });
 
   it("surfaces a permission request as its own fact, not as a notice", () => {

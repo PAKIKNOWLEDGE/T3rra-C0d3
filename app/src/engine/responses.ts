@@ -25,6 +25,19 @@ export interface ResponseMapping {
   readonly recognised: boolean;
 }
 
+/** A late session/load response must not retarget a newer session selection. */
+export const shouldApplySessionLoad = (
+  method: string,
+  requestedSessionId: string | undefined,
+  currentSessionId: string | undefined,
+): boolean => method !== "session/load" || requestedSessionId === undefined || requestedSessionId === currentSessionId;
+
+/** Returns whether a successful session/list response still contains the target session. */
+export const sessionPresentInList = (events: readonly AgentEvent[], sessionId: string): boolean | undefined => {
+  const update = events.find((event): event is Extract<AgentEvent, { kind: "sessions.updated" }> => event.kind === "sessions.updated");
+  return update?.sessions.some((session) => session.sessionId === sessionId);
+};
+
 const OPTION_SOURCE = { method: "config_option_update", variant: undefined } as const;
 
 /** A response carrying `configOptions` is the authoritative post-change option list. */
@@ -56,7 +69,7 @@ export const mapSessionList = (result: unknown): readonly SessionSummary[] => {
   return out;
 };
 
-export const mapResponse = (method: string, result: unknown): ResponseMapping => {
+export const mapResponse = (method: string, result: unknown, requestedSessionId?: string): ResponseMapping => {
   const events: AgentEvent[] = [];
   let sessionId: string | undefined;
   let agentName: string | undefined;
@@ -70,11 +83,19 @@ export const mapResponse = (method: string, result: unknown): ResponseMapping =>
 
   if (method === "session/new" || method === "session/load") {
     const payload = result as { sessionId?: string; configOptions?: readonly unknown[] } | null;
-    if (typeof payload?.sessionId === "string") {
-      sessionId = payload.sessionId;
-      events.push({ kind: "session.opened", from: { method: `${method}.response`, variant: undefined }, sessionId: payload.sessionId });
+    const returnedSessionId = typeof payload?.sessionId === "string" ? payload.sessionId : undefined;
+    // `session/load` responses in the real ACP trace carry configOptions but omit sessionId.
+    // The request is the authoritative correlation for that response, so use the requested id
+    // only for load; session/new must still prove its id in the response.
+    sessionId = returnedSessionId ?? (method === "session/load" ? requestedSessionId : undefined);
+    if (sessionId !== undefined) {
+      events.push({ kind: "session.opened", from: { method: `${method}.response`, variant: undefined }, sessionId });
     }
     if (payload?.configOptions !== undefined) events.push(optionsEventOf(payload.configOptions));
+    return { events, sessionId, agentName, recognised: true };
+  }
+
+  if (method === "session/close") {
     return { events, sessionId, agentName, recognised: true };
   }
 

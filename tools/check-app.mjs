@@ -158,6 +158,60 @@ if (!existsSync(FONT_CSS)) {
   notes.push(`${targets.length - missing.length}/${targets.length} font files present`);
 }
 
+// Dynamic controls are created by the renderer helper (`el("button", "class")`) rather than
+// appearing in app/index.html. Every such control still needs a manifest decision, or a dead
+// dynamic button can hide outside the shell scan.
+const UI_DIR = "app/src/ui";
+const DYNAMIC_MANIFEST_KEY = "dynamic";
+const createdElements = (source) => {
+  const found = [];
+  const add = (tags, labels) => found.push({ tags, labels: new Set(labels.flatMap((label) => label.split(/\s+/).filter(Boolean))) });
+
+  for (const match of source.matchAll(/\bel\(\s*"(button|select|input|textarea)"(?:\s*,\s*"([^"]*)")?/g)) {
+    add(match[1], match[2] === undefined || match[2] === "" ? [match[1]] : [match[2]]);
+  }
+
+  for (const match of source.matchAll(/document\.createElement\(\s*"(button|select|input|textarea)"\s*\)/g)) {
+    const window = source.slice(match.index, match.index + 260);
+    const labels = [...window.matchAll(/\.(?:id|className) = "([^"]+)"/g)].map((m) => m[1]);
+    add(match[1], labels.length === 0 ? [match[1]] : labels);
+  }
+
+  return found;
+};
+
+if (!existsSync(UI_DIR)) {
+  failures.push(`${UI_DIR} is missing: renderer-created controls cannot be checked`);
+} else if (!existsSync(MANIFEST)) {
+  failures.push(`${MANIFEST} is missing, so no renderer-created control can be classified`);
+} else {
+  const manifest = JSON.parse(readFileSync(MANIFEST, "utf8"));
+  const dynamic = manifest[DYNAMIC_MANIFEST_KEY] ?? {};
+  const uiSources = collectTs(UI_DIR).map((file) => ({ file, text: readFileSync(file, "utf8") }));
+  const created = uiSources.flatMap(({ file, text }) => createdElements(text).map((entry) => ({ ...entry, file })));
+  const classifiedLabels = new Set(Object.keys(dynamic));
+
+  for (const entry of created) {
+    const covered = [...entry.labels].some((label) => classifiedLabels.has(label));
+    if (!covered) failures.push(`${entry.file} creates a <${entry.tags}> (${[...entry.labels].join(" / ") || "no class or id"}) that ${MANIFEST} does not classify under "${DYNAMIC_MANIFEST_KEY}"`);
+  }
+
+  const liveLabels = new Set(created.flatMap((entry) => [...entry.labels]));
+  for (const id of Object.keys(dynamic)) {
+    if (!liveLabels.has(id)) failures.push(`${DYNAMIC_MANIFEST_KEY}.${id} is classified but nothing creates it any more (stale)`);
+    const entry = dynamic[id];
+    const escapedId = id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const appearsAsLiteral = tsText.includes(`"${id}"`) || tsText.includes(`'${id}'`) || new RegExp(`[\"'][^\"']*\\b${escapedId}\\b[^\"']*[\"']`).test(tsText);
+    if (entry?.wired === true && !appearsAsLiteral) {
+      failures.push(`${DYNAMIC_MANIFEST_KEY}.${id} claims wired but nothing in app/**/*.ts refers to it`);
+    }
+    if (entry?.wired !== true && typeof entry.static !== "string") {
+      failures.push(`${DYNAMIC_MANIFEST_KEY}.${id} must be either "wired": true or "static": "<reason>"`);
+    }
+  }
+  notes.push(`${created.length} renderer-created control(s), ${Object.keys(dynamic).length} classified as dynamic`);
+}
+
 // Silent early-return in a user-action path is a dead control by another name: the
 // handler is "wired" (gate green) but the click does nothing and says nothing. That is
 // exactly how + NEW went dead after 6190ad4. Require an explicit report on every guard.

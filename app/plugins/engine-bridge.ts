@@ -13,28 +13,32 @@
  */
 
 import { spawn, type ChildProcess, type ChildProcessWithoutNullStreams } from "node:child_process";
-import { homedir } from "node:os";
-import { mkdirSync } from "node:fs";
+import { homedir, tmpdir } from "node:os";
+import { existsSync, mkdirSync, readFileSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { join, resolve } from "node:path";
 import type { AddressInfo } from "node:net";
 import type { Plugin, ViteDevServer } from "vite";
 import type { ServerResponse } from "node:http";
 import type { IncomingMessage } from "node:http";
-import { resolveEngineCandidates } from "../src/engine/resolve.ts";
+import { isSupportedOpenCodeVersion, resolveEngineCandidates } from "../src/engine/resolve.ts";
 
 const PREFIX = "/__t3";
 const REAP_DELAY_MS = 60_000;
 const KEEPALIVE_MS = 15_000;
 const SERVE_READY_TIMEOUT_MS = 20_000;
+const FOLDER_PICKER_TIMEOUT_MS = 60_000;
+const MAX_BUFFERED_LINES = 2_000;
 
 interface Client {
   child: ChildProcessWithoutNullStreams | undefined;
+  cwd: string | undefined;
 
   serve: ChildProcess | undefined;
   servePort: number | undefined;
   serveReady: Promise<number> | undefined;
   streams: Set<ServerResponse>;
+  bufferedLines: string[];
   reap: ReturnType<typeof setTimeout> | undefined;
 }
 
@@ -79,22 +83,26 @@ const freePort = (): Promise<number> =>
     });
   });
 
-const probeVersion = (binary: string): Promise<boolean> =>
+const probeVersion = (binary: string, requireSupportedOpenCode: boolean): Promise<boolean> =>
   new Promise((done) => {
-    const child = spawn(binary, ["--version"], { stdio: "ignore", windowsHide: true });
+    const child = spawn(binary, ["--version"], { stdio: ["ignore", "pipe", "ignore"], windowsHide: true });
+    let output = "";
+    child.stdout?.on("data", (chunk: Buffer | string) => { output += String(chunk); });
     child.on("error", () => done(false));
-    child.once("close", (code) => done(code === 0));
+    child.once("close", (code) => done(code === 0 && (!requireSupportedOpenCode || isSupportedOpenCodeVersion(output))));
   });
 
 const resolveBinary = async (): Promise<string | null> => {
-  const { candidates } = resolveEngineCandidates({
+  const env = {
     T3RRA_ENGINE_BIN: process.env["T3RRA_ENGINE_BIN"],
     T3RRA_OMP_BIN: process.env["T3RRA_OMP_BIN"],
     T3RRA_ENGINE: process.env["T3RRA_ENGINE"],
     APPDATA: process.env["APPDATA"],
     HOME: process.env["HOME"] ?? homedir(),
-  });
-  for (const candidate of candidates) if (await probeVersion(candidate)) return candidate;
+  } as const;
+  const { candidates } = resolveEngineCandidates(env);
+  const explicitOmp = env.T3RRA_ENGINE === "omp" || (env.T3RRA_ENGINE_BIN === undefined && env.T3RRA_OMP_BIN !== undefined);
+  for (const candidate of candidates) if (await probeVersion(candidate, !explicitOmp)) return candidate;
   return null;
 };
 
@@ -104,13 +112,17 @@ export const engineBridge = (): Plugin => {
   const clientFor = (id: string): Client => {
     const existing = clients.get(id);
     if (existing !== undefined) return existing;
-    const created: Client = { child: undefined, serve: undefined, servePort: undefined, serveReady: undefined, streams: new Set(), reap: undefined };
+    const created: Client = { child: undefined, cwd: undefined, serve: undefined, servePort: undefined, serveReady: undefined, streams: new Set(), bufferedLines: [], reap: undefined };
     clients.set(id, created);
     return created;
   };
 
   const emit = (client: Client, event: string, data: string): void => {
     debug(`emit ${event} ${data.length}B to ${client.streams.size} stream(s)`);
+    if (event === "line" && client.streams.size === 0) {
+      client.bufferedLines.push(data);
+      if (client.bufferedLines.length > MAX_BUFFERED_LINES) client.bufferedLines.splice(0, client.bufferedLines.length - MAX_BUFFERED_LINES);
+    }
     for (const stream of client.streams) {
       stream.write(`event: ${event}\ndata: ${data.replace(/\n/g, "\\n")}\n\n`);
       // SSE that sits in a buffer is indistinguishable from an engine that never spoke.
@@ -192,6 +204,8 @@ export const engineBridge = (): Plugin => {
   const killClient = (client: Client): void => {
     client.child?.kill();
     client.child = undefined;
+    client.cwd = undefined;
+    client.bufferedLines = [];
     client.serve?.kill();
     client.serve = undefined;
     client.servePort = undefined;
@@ -215,6 +229,10 @@ export const engineBridge = (): Plugin => {
         debug(`stream attached for ${id}`);
         const client = clientFor(id);
         client.streams.add(res);
+        for (const line of client.bufferedLines) {
+          res.write(`event: line\ndata: ${line.replace(/\n/g, "\\n")}\n\n`);
+        }
+        client.bufferedLines = [];
         const keepAlive = setInterval(() => res.write(": keepalive\n\n"), KEEPALIVE_MS);
         req.on("close", () => {
           clearInterval(keepAlive);
@@ -224,7 +242,9 @@ export const engineBridge = (): Plugin => {
       });
 
       server.middlewares.use(`${PREFIX}/probe`, (req, res) => {
-        void resolveBinary().then((binary) => json(res, 200, { binary, cwd: sandboxDir() }));
+        const id = clientIdOf(req);
+        const client = id === null ? undefined : clientFor(id);
+        void resolveBinary().then((binary) => json(res, 200, { binary, cwd: client?.cwd ?? sandboxDir() }));
       });
 
       server.middlewares.use(`${PREFIX}/spawn`, (req, res) => {
@@ -240,14 +260,22 @@ export const engineBridge = (): Plugin => {
           }
           const binary = await resolveBinary();
           if (binary === null) {
-            json(res, 500, { ok: false, error: "engine not found: set T3RRA_ENGINE_BIN, or put opencode/omp on PATH" });
+            json(res, 500, { ok: false, error: "supported opencode not found: set T3RRA_ENGINE_BIN, or explicitly set T3RRA_ENGINE=omp" });
             return;
           }
           const client = clientFor(id);
-          client.child?.kill();
-
           const body = await readBody(req);
           const cwd = typeof body["cwd"] === "string" && body["cwd"] !== "" ? body["cwd"] : sandboxDir();
+          if (!existsSync(cwd) || !statSync(cwd).isDirectory()) {
+            json(res, 400, { ok: false, error: `cwd is not an existing directory: ${cwd}` });
+            return;
+          }
+          if (client.child !== undefined && client.child.exitCode === null && client.cwd === cwd) {
+            json(res, 200, { ok: true, reused: true, binary, cwd });
+            return;
+          }
+          client.child?.kill();
+          client.bufferedLines = [];
           // Plain `acp`, no `--port`: the child used to be started on a known port so that an
           // HTTP `session/{id}/abort` could reach the process owning the turn. That whole route
           // was built on a false premise (an earlier probe sent `session/cancel` as a *request*
@@ -256,11 +284,13 @@ export const engineBridge = (): Plugin => {
           // traces/opencode/opencode-acp-2026-09-24T10-34-39-594Z-cancel-notification.jsonl.
           const child = spawn(binary, ["acp"], { cwd, stdio: ["pipe", "pipe", "pipe"], windowsHide: true });
           client.child = child;
+          client.cwd = cwd;
           json(res, 200, { ok: true, binary, cwd });
 
           child.on("error", (error) => emit(client, "engine-error", JSON.stringify({ message: String(error) })));
           child.once("close", (code, signal) => {
             if (client.child === child) client.child = undefined;
+            if (client.child === undefined && client.cwd === cwd) client.cwd = undefined;
             emit(client, "exit", JSON.stringify({ code, signal }));
           });
 
@@ -283,6 +313,131 @@ export const engineBridge = (): Plugin => {
           child.stderr.on("data", (chunk: string) => {
             for (const line of chunk.split("\n")) if (line.trim() !== "") emit(client, "engine-error", JSON.stringify({ message: line }));
           });
+        })().catch((error: unknown) => json(res, 500, { ok: false, error: String(error) }));
+      });
+
+      server.middlewares.use(`${PREFIX}/choose-folder`, (req, res) => {
+        void (async () => {
+          if (req.method !== "POST") {
+            json(res, 405, { ok: false, error: "use POST" });
+            return;
+          }
+          if (process.platform !== "win32") {
+            json(res, 501, { ok: false, error: "native folder picker is only implemented on Windows" });
+            return;
+          }
+          // Use Windows Script Host for the native shell picker. A hidden PowerShell
+          // process could leave a modal .NET dialog without a usable message pump, which
+          // made the browser wait forever. WScript owns the Shell.Application dialog and
+          // writes the selected path to a temporary UTF-16 file before exiting.
+          const token = `${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+          const scriptPath = join(tmpdir(), `t3rra-folder-picker-${token}.vbs`);
+          const resultPath = join(tmpdir(), `t3rra-folder-picker-${token}.txt`);
+          const script = [
+            'Option Explicit',
+            'Dim shell, folder, fso, file, outputPath',
+            'outputPath = WScript.Arguments(0)',
+            'Set shell = CreateObject("Shell.Application")',
+            'Set folder = shell.BrowseForFolder(0, "Choose project directory", 0)',
+            'Set fso = CreateObject("Scripting.FileSystemObject")',
+            'Set file = fso.CreateTextFile(outputPath, True, True)',
+            'If folder Is Nothing Then',
+            '  file.Write ""',
+            'Else',
+            '  file.Write folder.Self.Path',
+            'End If',
+            'file.Close',
+          ].join("\r\n");
+          writeFileSync(scriptPath, script, "ascii");
+          const child = spawn("wscript.exe", [scriptPath, resultPath], {
+            stdio: "ignore",
+            windowsHide: false,
+          });
+          let settled = false;
+          const finish = (status: number, payload: unknown): void => {
+            if (settled) return;
+            settled = true;
+            json(res, status, payload);
+          };
+          const cleanup = (): void => {
+            for (const path of [scriptPath, resultPath]) {
+              try { unlinkSync(path); } catch { /* best effort */ }
+            }
+          };
+          const timeout = setTimeout(() => {
+            if (settled) return;
+            child.kill();
+            cleanup();
+            finish(504, { ok: false, error: "folder picker timed out" });
+          }, FOLDER_PICKER_TIMEOUT_MS);
+          const finishWithTimeout = (status: number, payload: unknown): void => {
+            clearTimeout(timeout);
+            cleanup();
+            finish(status, payload);
+          };
+          child.once("error", (cause) => finishWithTimeout(500, { ok: false, error: String(cause) }));
+          child.once("close", (code) => {
+            if (code !== 0) {
+              finishWithTimeout(500, { ok: false, error: `folder picker exited with code ${code}` });
+              return;
+            }
+            let path = "";
+            try {
+              path = readFileSync(resultPath, "utf16le").replace(/^\uFEFF/, "").trim();
+            } catch (cause) {
+              finishWithTimeout(500, { ok: false, error: `folder picker result unavailable: ${String(cause)}` });
+              return;
+            }
+            finishWithTimeout(200, { ok: true, path: path === "" ? null : path });
+          });
+        })().catch((error: unknown) => json(res, 500, { ok: false, error: String(error) }));
+      });
+
+      server.middlewares.use(`${PREFIX}/project-config`, (req, res) => {
+        void (async () => {
+          if (req.method !== "POST") {
+            json(res, 405, { ok: false, error: "use POST" });
+            return;
+          }
+          const url = new URL(req.url ?? "", "http://localhost");
+          const cwd = url.searchParams.get("cwd");
+          if (cwd === null || !existsSync(cwd) || !statSync(cwd).isDirectory()) {
+            json(res, 400, { ok: false, error: "cwd must be an existing directory" });
+            return;
+          }
+          const body = await readBody(req);
+          const method = body["method"];
+          if (method !== "GET" && method !== "PATCH") {
+            json(res, 400, { ok: false, error: "method must be GET or PATCH" });
+            return;
+          }
+          const jsoncFile = join(cwd, "opencode.jsonc");
+          if (existsSync(jsoncFile)) {
+            json(res, 409, { ok: false, error: "opencode.jsonc is present; edit that JSONC file manually" });
+            return;
+          }
+          const jsonFile = join(cwd, "opencode.json");
+          let config: Record<string, unknown> = {};
+          if (existsSync(jsonFile)) {
+            try {
+              const parsed = JSON.parse(readFileSync(jsonFile, "utf8")) as unknown;
+              if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("config root must be an object");
+              config = parsed as Record<string, unknown>;
+            } catch (error) {
+              json(res, 409, { ok: false, error: `opencode.json is not valid JSON: ${String(error)}` });
+              return;
+            }
+          }
+          if (method === "PATCH") {
+            const next = body["config"];
+            if (next === null || typeof next !== "object" || Array.isArray(next)) {
+              json(res, 400, { ok: false, error: "config must be an object" });
+              return;
+            }
+            writeFileSync(jsonFile, `${JSON.stringify(next, null, 2)}\n`, "utf8");
+            config = next as Record<string, unknown>;
+          }
+          json(res, 200, { ok: true, config });
         })().catch((error: unknown) => json(res, 500, { ok: false, error: String(error) }));
       });
 

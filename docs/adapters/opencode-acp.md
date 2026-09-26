@@ -50,13 +50,15 @@
 | `agent_message_chunk` | 真 prompt 流式 | 正文分块 |
 | `agent_thought_chunk` | 真 prompt 流式 | 思考分块 |
 | `user_message_chunk` | **仅回放** | 与 omp 同怪癖 |
-| `tool_call` / `tool_call_update` | 真 prompt / 回放 | 成对 |
+| `tool_call` / `tool_call_update` | 真 prompt / 回放 | 成对；`tool_call` 带 `status/title/kind/locations/rawInput`，更新可带 `title/kind/locations/rawInput/content/rawOutput`；我方只把可读文本与路径映射进详情 |
 | `available_commands_update` | `session/new` 与 `session/load` 后 | slash/skills 广播 |
 | **`usage_update`** | 真 prompt 结束时（**非无条件发**，条件见 §四 usage 行） | 字段【源码 2026-09-24】：`used = input + cache.read + cache.write`、`size = model.limit.context`、`cost {amount, currency:"USD"}`；⚠️ 与部分二手资料「不 emit」相反 |
 | **`config_option_update`** | 改 model 后 | ⚠️ 上游文档未列此 kind |
 | 未出现（可定论） | | `plan`、`current_mode_update`、`session_info_update`：协议联合有，但 `src/acp` **零发射点**【源码 2026-09-24】。`session/request_permission` 来不来问由 **permission 配置**决定、与 capability 声明无关（默认配置不问；配置 `permission.*="ask"` 后出现，见 §四与审计 F9） |
 
 ## 三、契约级行为【实测】
+
+- **工单详情字段**：上游 `packages/opencode/src/acp/tool.ts:12-34,124-229` 定义 pending/running/completed/error 四种工具状态；`packages/opencode/src/acp/event.ts:312-385` 发出 `tool_call` / `tool_call_update`。真实报文中的 `locations`、`rawInput`、`content`、`rawOutput` 均可用于目标、参数、输出与错误详情；没有文本或路径时保持「引擎未报告更多过程」。【源码 + 实测】
 
 - **`session/load` 回放先流、响应后到**：有历史会话中 **141 条更新先到**，响应随后（sent 1848ms → response 2384ms）。  
   证据：`traces/opencode/opencode-acp-2026-09-23T06-46-05-107Z-sequencing-redacted.jsonl` 的 `load_timing`。  
@@ -83,11 +85,13 @@
   - 历史原料告警：`*-halt-in-process.jsonl` 三份 trace 出自一个已不在仓库中的旧版脚本（现行 `spike/probe-halt-in-process.mjs` 的 verdict 只有三个分支，拼不出其中的 `NOT_STOPPED_IN_WINDOW`），  
     **其 verdict 字符串不可作任何方向的解读**。可依赖的只有其中的原始字段：`mainStop:"cancelled"`、`stoppedWithinMs:244`、`updatesAfterAbort:186`、`idleSignal:null`。  
     仍成立的两个残留问题：取消后引擎还会冲刷大量 update（污染节奏基线）；窗口内没有权威的 idle 信号可用。
-- **删除会话必须是两步：stdio `session/close` → HTTP `DELETE`**【实测 2026-09-24】：  
+- **删除会话必须是两步：stdio `session/close` → HTTP `DELETE`**【实测 2026-09-24】：
   单发 `DELETE` 只动库行——`DELETE` 得 200、同端口 `GET` 得 404，但 ACP 子进程的 `session/list` **仍列出该会话**（split-brain）。  
   证据：`traces/opencode/opencode-acp-2026-09-24T10-35-48-113Z-split-brain.jsonl`（盲审原始运行）+ `opencode-acp-2026-09-24T11-00-34-512Z-split-brain.jsonl`（可由 `spike/probe-split-brain.mjs` 复现）。  
   `session/close`（参数 `{sessionId}`，响应 `{}`）会做内存移除 + `abortBackingSession`（`acp/service.ts:347-355`）；实测先 close 再 DELETE、或先 DELETE 再 close，**事后 `session/list` 都不再列出**——见 `traces/opencode/opencode-acp-2026-09-24T11-15-49-216Z-delete-verify.jsonl`（`spike/probe-delete-verify.mjs`，provider-free）。  
   取顺序 **close → DELETE**（close 顺带中断在途 turn）。**此项代码尚未接**：`app/src/main.ts` 的删除目前只发 DELETE。【未验】close 一个正在跑 turn 的会话时客户端会收到哪些结束信号。
+- **项目配置的持久化路径与上游 HTTP 面不一致**【源码 2026-09-26】：`GET /config` 与 `PATCH /config` 由上游 `packages/opencode/src/server/routes/instance/httpapi/groups/config.ts:10-42` 声明，项目目录通过 `directory` 查询参数传入（`middleware/workspace-routing.ts:33-35,88-90`），处理器 `handlers/config.ts:8-21` 读取当前配置并在更新后触发实例回收；但 `Config.update` 在 `packages/opencode/src/config/config.ts:638-650` 固定写入项目目录下的 `config.json`，而项目配置加载由 `packages/opencode/src/config/paths.ts:9-18` 只搜索 `opencode.jsonc` / `opencode.json`。因此本仓配置入口不再调用上游 `PATCH /config`，而是由桥端维护当前 cwd 的 `opencode.json`；已有 `opencode.jsonc` 或无效 JSON 时返回可见错误，不覆盖用户文件。`permission` 的项目配置形状来自 `packages/core/src/v1/config/permission.ts:14-39`，动作值为 `allow` / `ask` / `deny`。本仓只修改 `permission.edit`，保存后重启 ACP 以让新目录配置生效；配置读取带版本与 cwd 校验，迟到响应不得覆盖新策略。
+- **ACP 初始化可在重连后再次握手**【源码 2026-09-26】：`packages/opencode/src/acp/service.ts:94-113` 的 `initialize` 每次返回静态协议能力和 `agentInfo`，不创建 session、不改变当前 turn。本仓在浏览器刷新后复用同一个 ACP 子进程并重新发送 `initialize`；这只恢复连接，不伪造新的会话或回合。
 - **`session/set_config_option { sessionId, configId, value }` 可用**，响应带回**完整 `configOptions`**——界面照响应重渲染，不自维护清单。
 - **`session/new` 响应不含 `modes`/`models` 字段**（`acp/service.ts:199-206`）：是**字段不存在**，不是 `null`。模式在 configOptions 的 `mode`。`load`/`resume`/`fork` 同样不返回。
 - **`session/resume` / `session/fork` / `session/close` / `session/set_mode` / `session/set_model` 均已实现但本仓从未调用**【源码】。回放语义**不同**：`load` = 全量回放；`resume` = **完全不回放**（只读最近 20 条恢复 model/variant/mode）；`fork` = 只回放 20 条。
@@ -100,7 +104,7 @@
 | 模式 | `session.modes` | `modes` 字段**不存在**（非 null，见 §三）；`mode` 走 configOptions，**仅 `build` / `plan`** | 界面模式组仅两档（无 ASK）。按「只渲 runtime 清单」，这是正常输入 |
 | effort | 有 `thinking` | **`effort`，仅对有 variants 的模型**：`deepseek-v4-pro`/`-flash`→`low`、`muse-spark-1.2/1.3`→`minimal`、`ling-3.0-flash-fin-free`→`low`；`big-pickle`/`mimo-v2.6`/`nemotron-*`→**无**。证据：`*-sequencing-redacted.jsonl` 逐模型 `set_config_option` 后清单 | 按当前模型清单动态渲染；先前「没有 effort」结论作废（当时默认模型无 variants） |
 | `thinking` | 有该 option 名 | **不存在**；对应 `effort` | 契约若绑过 `thinking` 须改 |
-| usage | `usage_update`＝上下文填充 | **有 `usage_update`**；字段【源码 2026-09-24】：`used = tokens.input + cache.read + cache.write`、`size = model.limit.context`、`cost = {amount: Σ assistant.cost, currency:"USD"}`。确为上下文填充率，与 `PromptResponse.usage`（token 明细）是两个量。**不是无条件发**：messages 拉取失败 / 无 providerID·modelID / 拿不到 context limit → 整条不发（`acp/usage.ts:195-206`、`service.ts:656-666`）。 | 两量区分成立；界面若显示填充率须容忍「本回合没有 usage_update」 |
+| usage | `usage_update`＝上下文填充 | **有 `usage_update`**；字段【源码 2026-09-26】：`used = tokens.input + cache.read + cache.write`、`size = model.limit.context`、`cost = {amount: Σ assistant.cost, currency:"USD"}`。确为上下文填充率，与 `PromptResponse.usage`（token 明细）是两个量。**不是无条件发**：messages 拉取失败 / 无 providerID·modelID / 拿不到 context limit → 整条不发（`C:/DEV/develop/opencode/packages/opencode/src/acp/usage.ts:192-218`、`C:/DEV/develop/opencode/packages/opencode/src/acp/service.ts:653-680`）。产品事件映射为 `usage.updated`；缺字段时保留 `message.unmapped`。 |
 | approval | **死的**（`permissions=false`） | **活着，但要配置才问**：项目 `permission.edit = "ask"` 后，真 prompt 触发 `session/request_permission`（agent→client，**非** `session/update`）。选项字面量【源码 `acp/permission.ts:20-24`】：`optionId` = `once` / `always` / `reject`，`kind` = `allow_once` / `allow_always` / `reject_once`（**无 reject_always**）。客户端 `reject` 后 turn 正常 `end_turn`。**`outcome:"cancelled"` 被引擎折成 `reject`**（`permission.ts:219-223`）。批准 `edit` 后引擎会**反向调用 client 的 `fs/write_text_file`** 写回整文件（`permission.ts:84-86,99-115`）——我方未实现该能力。**订正（审计 F9）**：旧说法「靠 SDK 可选调用侥幸不炸」的机制归因是错的——请求确实会发过来，我方降级为 unmapped 且永不回复，结果是批准后的编辑内容不会写回客户端。权限请求**按会话串行**（`permission.ts:37-49`）。 | omp 死掉的裁决在此恢复。**默认配置一次都不问**（静默放行）——是**配置问题不是能力缺口**，界面须能解释 |
 
 ## 五、对选型的含义
