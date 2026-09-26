@@ -3,3 +3,4 @@ node_modules/
 .check.tmp.*
 dist/
 .vite/
+.claude/worktrees/
