@@ -1,6 +1,8 @@
+> **【归档 2026-09-26】** 2026-09-24 的交接说明。HALT 部分描述的是已删除的 HTTP abort + 分流结构。运行方式与规矩已并入 [`AGENTS.md`](../../AGENTS.md)，完成度并入 [`docs/status.md`](../status.md)。
+
 # 交接说明
 
-面向接手本仓库的开发者或代理。阅读顺序：本文件 → [`status.md`](./status.md)（现行真相、验收账）→ [`engine-contract-audit.md`](./engine-contract-audit.md)（**对引擎的假设哪些是错的**）→ [`capability-map.md`](./capability-map.md)（能力全图与缺口）→ [`../AGENTS.md`](../AGENTS.md)（结构与通用规矩）。
+面向接手本仓库的开发者或代理。阅读顺序：本文件 → [`status.md`](./status-2026-09-26.md)（现行真相、验收账）→ [`engine-contract-audit.md`](../engine-contract-audit.md)（**对引擎的假设哪些是错的**）→ [`capability-map.md`](../capability-map.md)（能力全图与缺口）→ [`../AGENTS.md`](../../AGENTS.md)（结构与通用规矩）。
 
 ## 一、如何运行
 
@@ -53,7 +55,7 @@ npm run check:all                            # 六道闸，提交前须全绿
 - **审批界面（验收 #10，已实现待目视）**：底栏 `[ APPROVAL ]` 按引擎 options 渲按钮并回包。须 `permission.*="ask"` 才会触发。
 - **`RESTART ⟲`**：真动作（杀进程重开），但是**粗中断**。重开后可用会话列表 LOAD 回放。
 
-### 已知结构缺口（与验收 #1 并列；详见 [`capability-map.md`](./capability-map.md)）
+### 已知结构缺口（与验收 #1 并列；详见 [`capability-map.md`](../capability-map.md)）
 
 | 缺口 | 一句话 |
 | --- | --- |
@@ -61,11 +63,11 @@ npm run check:all                            # 六道闸，提交前须全绿
 | **无项目配置入口** | app 内找不到/改不了 `opencode.json` / `permission.*` → 审批默认不问无 UI 解释 |
 | **无 diff/文件/终端/图片等工作面** | HTTP 通道可搭，产品侧未接（现仅 DELETE） |
 | 多会话并发 | 单 transport、单打开会话；且 `session/update` 的 `params.sessionId` **我方完全忽略**（审计 F4）→ 事实会串台 |
-| **契约知识欠账** | 全部对引擎的假设来自抓包反推，**无人读过引擎源码**。2026-09-24 四路审计确认 20 项问题（5 项造事实级），见 [`engine-contract-audit.md`](./engine-contract-audit.md) |
+| **契约知识欠账** | 全部对引擎的假设来自抓包反推，**无人读过引擎源码**。2026-09-24 四路审计确认 20 项问题（5 项造事实级），见 [`engine-contract-audit.md`](../engine-contract-audit.md) |
 
 ### 接手第一件事（不是功能，是契约补课）
 
-按 [`engine-contract-audit.md`](./engine-contract-audit.md) §5 的 P0-a…P0-d 顺序：
+按 [`engine-contract-audit.md`](../engine-contract-audit.md) §5 的 P0-a…P0-d 顺序：
 
 1. **P0-a** 新探针：不带 id 的 `session/cancel` notification，端到端验证能否掐断在途 turn。这条决定整套双进程分流是留是删。  
 2. **P0-b** 契约补 `prompt.failed` / `link.down` / `permission.cancelled`；**错误响应不再当成功**。  
@@ -102,13 +104,13 @@ npm run check:all                            # 六道闸，提交前须全绿
 
 | 要确认什么 | 位置 |
 | --- | --- |
-| 引擎能做什么、缺什么 | [`adapters/opencode-acp.md`](./adapters/opencode-acp.md)（【实测】/【文档】/【未验】） |
+| 引擎能做什么、缺什么 | [`adapters/opencode-acp.md`](../adapters/opencode-acp.md)（【实测】/【文档】/【未验】） |
 | 报文原件 | `traces/opencode/*.jsonl` |
 | 引擎 HTTP 面 | `traces/opencode/openapi-1.17.18.json`（162 paths） |
 | 引擎配置（含 permission） | `traces/opencode/opencode-config.schema.json` |
 | 探针用法 | `spike/probe-app-pipeline.mjs`、`probe-config-option.mjs`、`probe-sse-http.mjs`、`probe-session-cancel.mjs` |
 | 界面标准与可改边界 | [`visual-guide.md`](./visual-guide.md) |
-| 主人验收账 | [`status.md`](./status.md) |
+| 主人验收账 | [`status.md`](./status-2026-09-26.md) |
 
 ## 五、文档与现实的两处差（接手时注意）
 

@@ -1,3 +1,5 @@
+> **【归档 2026-09-26】** 对旧范本 `demo/ark-console.html`（现 `docs/archive/demo/`）的三方盲审记录。范本已被否定。
+
 # 盲审记录：`demo/ark-console.html`
 
 日期：2026-09-21。对象：`demo/ark-console.html`（已验收为范本级）。  

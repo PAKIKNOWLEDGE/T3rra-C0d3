@@ -80,7 +80,7 @@ export const MAPPED_VARIANTS: readonly string[] = [
 /**
  * Variants that are *known and deliberately not mapped*, with the reason. They are counted so
  * the coverage test can tell "we decided this" apart from "a new kind appeared" — a new kind
- * must fail the test and force a decision (rules-inherited §五.23).
+ * must fail the test and force a decision (rules §五.23).
  */
 export const COUNTED_VARIANTS: readonly { readonly variant: string; readonly why: string }[] = [
   { variant: "available_commands_update", why: "the runtime's own slash commands/skills; not a T3rra concept (rule 5)" },

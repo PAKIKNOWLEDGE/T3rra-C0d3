@@ -16,9 +16,11 @@
 
 暴露能力：
 
-- session：**create / list / load / resume / fork / close / delete**
+- session：**create / list / load / resume / fork / close / delete**【文档】
+  ※ **2026-09-26 更正**：ACP 的 `sessionCapabilities` 里**没有 delete**，只有 close / fork / list / resume（审计 §4 最后一行）。删除要走 HTTP `DELETE`。
 - load / fork **回放**已存消息
-- **cancel** 进行中的 prompt（不关 session）※ 本机 1.18.32 实测 **ACP 面无 `session/cancel`（-32601）**，见 `adapters/opencode-acp.md`；下条为上游文档描述
+- **cancel** 进行中的 prompt（不关 session）
+  ※ **2026-09-26 更正**：旧注「ACP 面无 `session/cancel`（-32601）」是实验方法错误，那次把它当 request 发了。它是 notification，端到端实测 53ms 可中断（审计 F1；`adapters/opencode-acp.md` §三）。
 - 流式 text / reasoning / tool / permission / usage
 - session options：模型与非 subagent agent 清单；会话中可改 **model / effort / mode**
 - 广播 slash commands 与 skills【文档】

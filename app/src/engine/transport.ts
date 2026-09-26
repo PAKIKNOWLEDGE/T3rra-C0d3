@@ -5,7 +5,7 @@
  * will replace it with an ipc channel. Either way this module only moves lines/bytes: it never
  * parses ACP, never learns what a `sessionUpdate` is, and never decides anything.
  *
- * That separation is rule 4 (rules-inherited §一): the shell moves bytes, the TS contract
+ * That separation is rule 4 (rules §一): the shell moves bytes, the TS contract
  * decides what they mean. `http()` is a generic request tunnel — path construction lives in
  * `engine-http.ts`.
  */

@@ -52,7 +52,7 @@ describe("unified stream timeline", () => {
   });
 });
 
-describe("provenance coverage (rules-inherited §一.2)", () => {
+describe("provenance coverage (rules §一.2)", () => {
   it("declares a home for every event kind the contract can emit", () => {
     const declared = new Set(VIEW_BLOCKS.flatMap((block) => BLOCK_PROVENANCE[block]));
     const homeless = EVENT_KINDS.filter((kind) => !declared.has(kind));

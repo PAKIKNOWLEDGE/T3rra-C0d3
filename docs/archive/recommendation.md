@@ -1,15 +1,17 @@
+> **【归档 2026-09-26】** 2026-09-21 的后端对比与选型论证。结论（opencode）已写进 [`AGENTS.md`](../../AGENTS.md) §二；spike 脚本仍引用本文 §4 的四个问题。
+
 # 结论与建议
 
-> **代际: core-era ｜ 状态: 部分作废（仅历史） ｜ 取代: [`status.md`](./status.md) @ 2026-09-23**
+> **代际: core-era ｜ 状态: 部分作废（仅历史） ｜ 取代: [`status.md`](./status-2026-09-26.md) @ 2026-09-23**
 >
 > 写于 2026-09-21，口径为「**保留 core 界面、只换引擎**」。  
 > **该口径已取代**：2026-09-23 起为**重写**，工程树 `t3rra-C0d3`（见 `status.md` 代际表）。
 >
 > - **仍有效**：§2 对比表（证据）、§4 判决标准、§5 开放问题、Tauri 记账。
 > - **已作废**：§3「代价 = 一个 `AgentSource`」的小手术口径。
-> - **§4 spike 已完成**：结论见 [`adapters/opencode-acp.md`](./adapters/opencode-acp.md) 与 `traces/opencode/`（四判据已闭合，含审批）。
+> - **§4 spike 已完成**：结论见 [`adapters/opencode-acp.md`](../adapters/opencode-acp.md) 与 `traces/opencode/`（四判据已闭合，含审批）。
 
-前置：[`current-state.md`](./current-state.md)、[`backends/omp.md`](./backends/omp.md)、[`backends/opencode.md`](./backends/opencode.md)、[`backends/dsh.md`](./backends/dsh.md)。
+前置：[`current-state.md`](./current-state.md)、[`backends/omp.md`](../backends/omp.md)、[`backends/opencode.md`](../backends/opencode.md)、[`backends/dsh.md`](../backends/dsh.md)。
 
 ---
 
@@ -69,7 +71,7 @@ t3rra-core 架构本为「换引擎」设计（`AGENTS.md` §四）。选项 1 �
 **目标**：用证据回答「适配器能否吃 `opencode acp`」。
 
 - 照 `scripts/spike-acp.mjs`，子进程换 `opencode acp`；**spike 不进产物，`src/` 永不 import**。
-- 产物：`traces/opencode/*.jsonl`；产出 [`adapters/opencode-acp.md`](./adapters/opencode-acp.md)。
+- 产物：`traces/opencode/*.jsonl`；产出 [`adapters/opencode-acp.md`](../adapters/opencode-acp.md)。
 - 判据：报文是否存在；有损列变化；options 能否填 model/mode/thinking；`session/load` 是否可用。
 
 **状态：四条判据已闭合**（2026-09-23）。

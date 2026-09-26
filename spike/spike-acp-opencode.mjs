@@ -9,7 +9,7 @@
  *     when the client declares nothing
  *   - handshake only == zero tokens spent (there is a --prompt switch, off by default)
  *
- * Why: docs/recommendation.md §4 asks four falsifiable questions, and every one of them is
+ * Why: docs/archive/recommendation.md §4 asks four falsifiable questions, and every one of them is
  * a message-level question. Running `opencode acp` answers them; reading its source would
  * not answer question 1 (does the message exist in the bytes) any better.
  *
@@ -228,7 +228,7 @@ async function main() {
     }
   }
 
-  /* Question 4 of docs/recommendation.md §4: does session/load replay? The zero-token way to
+  /* Question 4 of docs/archive/recommendation.md §4: does session/load replay? The zero-token way to
      ask is to load the session we just created — it is empty, so no instruction is spent and
      no pre-existing user session is copied into the trace. */
   try {

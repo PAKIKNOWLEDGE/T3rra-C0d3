@@ -2,7 +2,7 @@
 /*
  * Redacted session/load probe against `opencode acp`.
  *
- * Question it answers (docs/recommendation.md §4, Q4): when opencode replays a session that
+ * Question it answers (docs/archive/recommendation.md §4, Q4): when opencode replays a session that
  * HAS history, what actually comes over the wire — and as which notifications?
  *
  * Privacy is a design constraint here, not a footnote:

@@ -1,5 +1,5 @@
 /**
- * Silence judgement — rules-inherited §二.7–9, implemented as numbers.
+ * Silence judgement — rules §二.7–9, implemented as numbers.
  *
  *   7. never judge by absolute milliseconds: the baseline is the **median** of the gaps actually
  *      measured for the phase that was waiting; ×8 is slow, ×25 is stalled; fewer than three

@@ -7,9 +7,9 @@
  * traces show that declaring nothing is what keeps this frontend inert — the engine then never
  * asks us for a filesystem, a terminal, or permission.
  *
- * The stage title is the operator's *own instruction* — the one fact about "what is happening"
- * that we actually hold (rules-inherited §四: the stage owns the task topic; the tool stream
- * lives in the feed). Before the first instruction it says so, rather than inventing a topic.
+ * The page title's topic is the operator's *own instruction* — the one fact about "what is
+ * happening" that we actually hold; the tool stream lives in the record. Before the first
+ * instruction it says so, rather than inventing a topic.
  */
 
 import { translateLine } from "./engine/acp.ts";

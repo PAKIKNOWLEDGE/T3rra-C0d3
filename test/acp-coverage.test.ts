@@ -35,7 +35,7 @@ const observedVariants = (): ReadonlySet<string> => {
   return variants;
 };
 
-describe("adapter vs captured traffic (rules-inherited §二.23, §八)", () => {
+describe("adapter vs captured traffic (rules §二.23, §八)", () => {
   const variants = observedVariants();
 
   it("has captured at least one variant to check against", () => {
@@ -53,7 +53,7 @@ describe("adapter vs captured traffic (rules-inherited §二.23, §八)", () => 
   });
 });
 
-describe("provenance coverage (rules-inherited §一.2)", () => {
+describe("provenance coverage (rules §一.2)", () => {
   const declared = new Set(VIEW_BLOCKS.flatMap((block) => BLOCK_PROVENANCE[block]));
 
   it("declares a home for every event kind the contract can emit", () => {

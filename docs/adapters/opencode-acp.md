@@ -63,8 +63,8 @@
   符合 ACP「MUST replay… respond only after all entries streamed」→ 适配器可把「load 已返回」当「历史完整」。  
   （首测曾挑到空会话、结论相反；换有历史会话才定——挑会话是此类实验的必要条件。）
 - **`session/list` 四字段映射已被真实报文证实正确（2026-09-24 闭合，审计 F11）**：本仓 3 份 trace 记录了真实行（`traces/opencode/opencode-acp-2026-09-24T10-35-48-113Z-split-brain.jsonl`、`traces/opencode/opencode-acp-2026-09-24T11-00-34-512Z-split-brain.jsonl`、`traces/opencode/opencode-acp-2026-09-24T10-34-39-594Z-cancel-notification.jsonl`）【实测】。行形状 `{sessionId, cwd, title, updatedAt}`；**`updatedAt` 是 ISO-8601 字符串**（例 `"2026-09-24T10:35:50.218Z"`；上游 `acp/service.ts:268` `new Date(item.time.updated).toISOString()`）；新建会话**有** title（`New session - <ISO>`）。我方 `responses.ts:39-57` 的映射（sessionId|id 双写兼容、title/cwd 缺失退 `""`、`updatedAt` 用 `String()` 归一）对真实行全部成立——**映射本身正确**，旧「0 条报文支持」的说法作废。  
-  已【源码】确认的行为：`limit=100` 硬编码、`roots:true` 只列 root 会话、`nextCursor` = 页尾条目 updatedAt 毫秒字符串、**内存中未落盘的会话置顶且无 title**。  
-  **已接入产品**：`responses.ts` → `sessions.updated`；右栏 `[ SESSIONS ]`（**未做分页**）。删除走 HTTP **`DELETE /session/{sessionID}`**（OpenAPI）经桥 `/http` → 懒起 `opencode serve`（主人验收 #2 的路径；2026-09-24 曾把 DELETE 也改路由到 acp 端口，实测假成功——见下「DELETE 反向注意」——已改回分流）。  
+  已【源码】确认的行为：`limit=100` 硬编码、`roots:true` 只列 root 会话、`nextCursor` = 页尾条目 updatedAt 毫秒字符串、内存中未落盘的会话的排序与 title【未验，审计 F11 指出「置顶」说法不准】。  
+  **已接入产品**：`responses.ts` → `sessions.updated`；右栏 `[ SESSIONS ]`（**未做分页**）。删除走 HTTP **`DELETE /session/{sessionID}`**（OpenAPI），经桥 `/http` 转到懒起的 `opencode serve`（主人验收 #2 的路径）。按路径分流已于 `29f8ea0` 随 HTTP abort 一起删除。  
   LOAD 走 ACP `session/load { sessionId, cwd, mcpServers }`（与 spike 同形）。
 - **`session/cancel` 是 notification，不是「不存在」（2026-09-24 源码更正）**：  
   上游 `packages/opencode/src/acp/agent.ts:83` 实现 `cancel(CancelNotification)` → `service.ts:357-360` → `POST /session/{id}/abort`。  
@@ -73,7 +73,7 @@
   notification 形态端到端**已实测可掐断在途 turn**【实测 2026-09-24】：`spike/probe-cancel-notification.mjs` → `traces/opencode/opencode-acp-2026-09-24T10-34-39-594Z-cancel-notification.jsonl`。  
   发 `{"jsonrpc":"2.0","method":"session/cancel","params":{"sessionId":…}}`（**无 `id`**）后 **53ms**，在途 `session/prompt` 回 `{"stopReason":"cancelled"}`，verdict `CANCELLED_VIA_NOTIFICATION`。  
   纯 stdio，不需要 `--port`、不需要第二个进程、不需要桥。**HALT 因此走这条路径**；为 HTTP `abort` 而建的按路径分流结构已删除（commit 29f8ea0）。  
-  → 详见 [`engine-contract-audit.md`](../engine-contract-audit.md) F1。当前 HTTP abort 路线的去留取决于这条验证。
+  → 详见 [`engine-contract-audit.md`](../engine-contract-audit.md) F1。HTTP abort 路线已据此删除。
 - **HTTP `abort` 恒返回 `true`**：`handlers/session.ts:232-235` 不校验会话存在；run-state 是**进程内 + 按 directory 键控**的内存 Map（`session/run-state.ts:35-50,77-86`）。跨进程 abort = no-op 但 HTTP 200 `true`。反证 trace：`opencode-acp-2026-09-24T04-37-51-820Z-bridge-route.jsonl`（假 id → `200 "true"`）。**中断是否生效只能看 `stopReason:"cancelled"` / status 事件，不能看 HTTP 返回。**
 - **`abort` / `DELETE` 的 `directory` / `workspace` 是 OpenAPI 定义的 query 参数**（本地导出 + `sdk/js/src/v2/gen/sdk.gen.ts:3913-3937`）；我方目前只发裸路径【源码】——单沙箱掩盖，接真项目根即错实例。
 - **中断走 stdio notification，不走 HTTP**【实测 2026-09-24，commit 29f8ea0】：  
@@ -97,7 +97,7 @@
 
 | 能力 | omp | opencode 1.18.32【实测】 | 影响 |
 | --- | --- | --- | --- |
-| 模式 | `session.modes` | `modes: null`；`mode` 走 configOptions，**仅 `build` / `plan`** | 界面模式组仅两档（无 ASK）。按「只渲 runtime 清单」，这是正常输入 |
+| 模式 | `session.modes` | `modes` 字段**不存在**（非 null，见 §三）；`mode` 走 configOptions，**仅 `build` / `plan`** | 界面模式组仅两档（无 ASK）。按「只渲 runtime 清单」，这是正常输入 |
 | effort | 有 `thinking` | **`effort`，仅对有 variants 的模型**：`deepseek-v4-pro`/`-flash`→`low`、`muse-spark-1.2/1.3`→`minimal`、`ling-3.0-flash-fin-free`→`low`；`big-pickle`/`mimo-v2.6`/`nemotron-*`→**无**。证据：`*-sequencing-redacted.jsonl` 逐模型 `set_config_option` 后清单 | 按当前模型清单动态渲染；先前「没有 effort」结论作废（当时默认模型无 variants） |
 | `thinking` | 有该 option 名 | **不存在**；对应 `effort` | 契约若绑过 `thinking` 须改 |
 | usage | `usage_update`＝上下文填充 | **有 `usage_update`**；字段【源码 2026-09-24】：`used = tokens.input + cache.read + cache.write`、`size = model.limit.context`、`cost = {amount: Σ assistant.cost, currency:"USD"}`。确为上下文填充率，与 `PromptResponse.usage`（token 明细）是两个量。**不是无条件发**：messages 拉取失败 / 无 providerID·modelID / 拿不到 context limit → 整条不发（`acp/usage.ts:195-206`、`service.ts:656-666`）。 | 两量区分成立；界面若显示填充率须容忍「本回合没有 usage_update」 |
@@ -117,7 +117,7 @@
 
 1. **`allow_always` 语义**：权限记忆由引擎持久化（键是什么）还是每会话重来？界面显示「始终允许」前须知。
 2. **默认静默放行**：默认 `permission` 不 `ask`，审批永不出现。产品是否点出「当前配置不会问你」——产品决策。
-3. **`usage_update` 字段**是否即上下文填充率（与 `PromptResponse.usage` 是两量）。
+3. ~~`usage_update` 字段含义~~ → 已闭合【源码】：是上下文填充率，见 §四 usage 行。
 4. **v2 HTTP SSE 断连/溢流**对静默判据的影响——本轮只测 ACP。
-5. `session_info_update` 是否真的不存在。
-6. **目标平台**：将来可能 NixOS。会翻出 Tauri 结论重审——WebKitGTK 坑见 `adapters/opencode-acp.md` 相关节与 `backends/dsh.md`。**现在不动，打包前须复核。**
+5. ~~`session_info_update` 是否存在~~ → 已闭合【源码】：零发射点，见 §二。
+6. **目标平台**：将来可能 NixOS。那时要重审 Tauri 结论，WebKitGTK 的坑见 [`backends/opencode.md`](../backends/opencode.md) 与 [`backends/dsh.md`](../backends/dsh.md)。**现在不动，打包前须复核。**

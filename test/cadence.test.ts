@@ -22,7 +22,7 @@ const replay = (points: readonly (readonly [string, number])[], startWaitingAt =
   return cadence;
 };
 
-describe("silence judgement (rules-inherited §二.7-9)", () => {
+describe("silence judgement (rules §二.7-9)", () => {
   it("uses the median of measured gaps, not a mean or a constant", () => {
     const cadence = replay([
       ["streaming", 100],

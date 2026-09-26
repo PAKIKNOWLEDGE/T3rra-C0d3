@@ -4,7 +4,9 @@
 **本文件是「黑盒猜测」的清算账。** 与 [`capability-map.md`](./capability-map.md) 的分工：capability-map 回答「产品功能有没有」；本文件回答「对引擎的每一次假设是否成立」。
 
 **结论先行**：本项目此前对 opencode 的行为假设基本来自抓包反推，其中多处反推错了。最严重的一条：HALT 的整套架构（双进程、端口分流、正则路由）建立在一个**方法错误的否证实验**上（F1）。  
-**修订记录 2026-09-24（同日，盲审之后）**：本文初稿的严重度分布有偏差，已按证据订正——F9 机制写错、F11 的「0 报文支持」已被真实报文推翻、F13 归因过重、F20 证据等级拔高、F1 的【未验】已闭合成【实测】。另新增 F21（split-brain），影响高于本文约一半条目。当前真相以 [`status.md`](./status.md) §本轮 与本文修订后条目为准。
+**修订记录 2026-09-24（同日，盲审之后）**：本文初稿的严重度分布有偏差，已按证据订正——F9 机制写错、F11 的「0 报文支持」已被真实报文推翻、F13 归因过重、F20 证据等级拔高、F1 的【未验】已闭合成【实测】。另新增 F21（split-brain），影响高于本文约一半条目。当前真相以 [`status.md`](./status.md) §4 与本文修订后条目为准。
+
+**2026-09-26 说明**：§1 各条描述的是 2026-09-24 批次 1 **修复之前**的代码。F1、F2、F4、F5、F6、F7、F10 已修，F21 已实测出修法但未接线。逐条处置现状见本文 §5 与 `status.md` §4。§4 的「假话清单」已在 2026-09-26 文档重构中处理完。
 
 ## 0.0 严重度分层（初稿缺这一层，导致 20 条看起来同等致命）
 
@@ -238,7 +240,7 @@
 
 ---
 
-## 4. 文档需即刻修正的假话清单
+## 4. 文档需即刻修正的假话清单（2026-09-26：已全部处理）
 
 | 位置 | 现说法 | 应改为 |
 | --- | --- | --- |
@@ -257,18 +259,20 @@
 
 ---
 
-## 5. 修复顺序建议（待主人拍板，未开工）
+## 5. 修复顺序与处置（2026-09-26 更新）
+
+P0 批次已于 2026-09-24 完成（`status.md` §5）。下表保留原建议，并在每行开头标出处置。
 
 | 优先级 | 动作 | 理由 |
 | --- | --- | --- |
 | ~~**P0-a**~~ | ~~新探针：notification `session/cancel` 端到端~~ | **已完成 2026-09-24**【实测】：`spike/probe-cancel-notification.mjs` → `10-34-39-594Z-cancel-notification.jsonl`，53ms `stopReason:"cancelled"`。**决定：分流删除**，cancel 走 stdio notification |
-| **P0-a'** | 删除双进程分流：`engine-bridge.ts` 的 `acp --port` spawn 与 `/abort` 路径正则；HALT 改发 stdio notification；去掉 `status<400` 即成功的判定 | F1 + F2；这是唯一被实测判为冗余的结构 |
-| **P0-e** | split-brain 缓解实测：删除前先 stdio `session/close`，再看 stdio `session/list` 是否仍列出 | F21；影响已被勾验收项 #2 |
-| **P0-b** | 契约补 `prompt.failed` / `link.down` / `permission.cancelled`；错误响应**不再当成功** | 止住「造事实」类缺陷（F6/F7/F10） |
-| **P0-c** | 所有 `session/update` 按 `params.sessionId` 路由 | 多会话前提；停止事实串台（F4） |
-| **P0-d** | 请求 id 与引擎请求 id 分域；RESTART 清 pending | 止住审批被吞、turn 挂死（F5） |
-| **P1-a** | 中断判定改为事件驱动（`stopReason:cancelled` / status idle），HTTP 返回值只当「已受理」 | F2 |
-| **P1-b** | `abort`/`DELETE` 带 `directory`；分流正则失配时**显式失败**不回落（分流删除后此项只剩 `directory` + 失配须失败） | F3 |
+| ~~**P0-a'**~~ **已完成 `29f8ea0`** | 删除双进程分流：`engine-bridge.ts` 的 `acp --port` spawn 与 `/abort` 路径正则；HALT 改发 stdio notification；去掉 `status<400` 即成功的判定 | F1 + F2；这是唯一被实测判为冗余的结构 |
+| ~~**P0-e**~~ **实测已完成（`ddb93cf`），修法未接线** | split-brain 缓解实测：删除前先 stdio `session/close`，再看 stdio `session/list` 是否仍列出 | F21；影响已被勾验收项 #2 |
+| ~~**P0-b**~~ **已完成** | 契约补 `prompt.failed` / `link.down` / `permission.cancelled`；错误响应**不再当成功** | 止住「造事实」类缺陷（F6/F7/F10） |
+| ~~**P0-c**~~ **已完成** | 所有 `session/update` 按 `params.sessionId` 路由 | 多会话前提；停止事实串台（F4） |
+| ~~**P0-d**~~ **已完成（改为按报文形状判定响应；分域在 JSON-RPC 里做不到）** | 请求 id 与引擎请求 id 分域；RESTART 清 pending | 止住审批被吞、turn 挂死（F5） |
+| **P1-a** 基本完成（10s 看门狗 + 以 `prompt.ended` 为准） | 中断判定改为事件驱动（`stopReason:cancelled` / status idle），HTTP 返回值只当「已受理」 | F2 |
+| **P1-b** 未做（abort 已删，只剩 DELETE） | `abort`/`DELETE` 带 `directory`；分流正则失配时**显式失败**不回落（分流删除后此项只剩 `directory` + 失配须失败） | F3 |
 | **P1-c** | 工具行映射 `status`/`title` 更新；非文本 content 走 unmapped；**cancelled 后的冲刷不计入 cadence 样本** | F8 + F13 残留问题 1 |
 | **P1-d** | `session/list` 分页消费 `nextCursor`（>100 条时不得只显示一页且不声明 absence）；**字段映射已报文证实正确，不必重测** | F11（已订正） |
 | **P1-e** | 回合结束的权威信号源：`idleSignal` 为 null 时如何定论 | F13 残留问题 2 + F7 |

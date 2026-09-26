@@ -1,11 +1,13 @@
+> **【归档 2026-09-26】** 2026-09-21 的快照（omp 时代）。现行状态见 [`docs/status.md`](../status.md)。
+
 # 现状（2026-09-21 快照）
 
-> **代际: core-era ｜ 状态: 仅历史 ｜ 取代: [`status.md`](./status.md) @ 2026-09-23**
+> **代际: core-era ｜ 状态: 仅历史 ｜ 取代: [`status.md`](./status-2026-09-26.md) @ 2026-09-23**
 >
-> 本文件不是当前状态。现行状态看 [`status.md`](./status.md)。  
+> 本文件不是当前状态。现行状态看 [`status.md`](./status-2026-09-26.md)。  
 > 仍有效：§4 规则摘录（除 13–18 视觉，已被 [`design-contract.md`](./design-contract.md) 取代）、§6 omp 实测基线（历史对照）。  
 > 已过时：§1「workspace 是空的」、§3「绑死 omp」、§5「引擎=omp 已定」。  
-> 2026-09-23 起：本工作区即工程本体，引擎依据 [`adapters/opencode-acp.md`](./adapters/opencode-acp.md)。
+> 2026-09-23 起：本工作区即工程本体，引擎依据 [`adapters/opencode-acp.md`](../adapters/opencode-acp.md)。
 
 ## 1. 建成时这里是空的，工程在 t3rra-core（当时的说法）
 
@@ -94,8 +96,8 @@
 
 ## 7. 为什么要换后端
 
-1. **图片会离开本机**：omp `blob-broker` 把图片发布成 URL（图床/云盘/隧道）。见 [`backends/omp.md`](./backends/omp.md)。
+1. **图片会离开本机**：omp `blob-broker` 把图片发布成 URL（图床/云盘/隧道）。见 [`backends/omp.md`](../backends/omp.md)。
 2. **维护成本**：约 146 万行 TS + 24 万行 Rust，Bazel+Cargo+bun+Python。
 3. **ACP 面窄**：`permissions=false`、approval 死、plan 从不出现——界面能做的许多事 omp 不在事件里说。
 
-「runtime 没说的界面不许知道也不许编」在 omp 上会变成产品天花板。opencode 接入面更宽（[`backends/opencode.md`](./backends/opencode.md)）。
+「runtime 没说的界面不许知道也不许编」在 omp 上会变成产品天花板。opencode 接入面更宽（[`backends/opencode.md`](../backends/opencode.md)）。

@@ -1,6 +1,6 @@
 /**
  * The renderer. Reads a `ConsoleView` plus a small set of *real* session facts, and nothing
- * else (rules-inherited §一.1) — no wire objects, no engine knowledge.
+ * else (rules §一.1) — no wire objects, no engine knowledge.
  *
  * Visual language: ARK family of the 3NDM1N15T4T0R design language (docs/design.md). Every
  * component of the gold-standard specimen is mapped to a real fact here; where the specimen

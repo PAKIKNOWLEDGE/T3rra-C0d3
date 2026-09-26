@@ -79,5 +79,5 @@ TUI 另有原生图片协议：`kitty-graphics.ts`、`sixel.ts`、`deccara.ts`�
 
 ## 对选型的影响
 
-即便不换引擎，omp 的 ACP 面也窄（见 [`current-state.md`](../current-state.md) §6）：`permissions = false`、approval 死、plan 从不出现。  
+即便不换引擎，omp 的 ACP 面也窄（见 [`current-state.md`](../archive/current-state.md) §6）：`permissions = false`、approval 死、plan 从不出现。  
 「runtime 没告诉界面的，界面不许知道」在 omp 上会变成产品天花板。

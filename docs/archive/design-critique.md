@@ -1,3 +1,5 @@
+> **【归档 2026-09-26】** 对 endfield 旧实现的六条批评，前提是 ark-ui skill 的演绎范式。新标准见 [`docs/design.md`](../design.md)；本文不再是禁令。
+
 # 反面记录：endfield 风格的六个问题
 
 日期：2026-09-21。对象：`t3rra-core` 的 field console（`docs/screens/field-console/` 截图）。  

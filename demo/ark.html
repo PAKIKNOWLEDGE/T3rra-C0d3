@@ -1,0 +1,936 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-state="approval">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ARK 族示例 · 3NDM1N15T4T0R</title>
+<!--
+  快照：C:\DEV\develop\3NDM1N15T4T0R@5bb6518 examples/ark.html（正本在那里）。
+  只改了字体路径（../assets/fonts/ → fonts/）。改设计先改正本，再重新拷贝这份。
+  这是金标准样张，不是产品：里面的 76K/200K、计划、diff 行数都是演示数据。
+-->
+<style>
+/* ==========================================================================
+   3NDM1N15T4T0R · ARK 族示例（examples/ark.html）
+
+   取自实机截图的语法（Manuel-ref-image/ARK*）：
+     - 左上「‹ | ⌂」返回/主页条 + 独立的 ⓘ 方块：每个系统页都有
+     - 中深灰渐变实心块 + 1px 亮边 + 投影；选中 = 浅色块、深色字（名片页左栏）
+     - 蓝色 = 主操作（「收取所有邮件」「进驻总览」）
+     - 基建站点卡：左侧色条 = 类别，大号中文站名，彩色状态「生产中▶▶▶」，
+       右下斜体数字，底部分段进度条，块内淡水印图标 → 用来画「工单」
+     - 道具弹窗：黑底标签 + 「已存入 | 1」双段 + 斜体说明 + 底部网点纹整条操作栏 → 用来画「批准」
+     - 干员详情：LV 圆环（黄弧）+ 属性行（图标方块 + 数值条） → 用来画「上下文」
+     - 右上资源条：彩色图标方块 + 大号数字「177/235」
+     - 基建画布：十字准星 + 竖排小字 → 记录簿的底纹（只在空白处）
+     - 设置页：分段按钮之间用短线相连，选中为蓝
+
+   颜色的职责：
+     蓝   主操作 / 当前选中的工单
+     黄   上下文消耗、执行类工单（终端）
+     青   读取类工单     绿 修改类工单     橙 需要你（角标）     红 中止 / 拒绝
+   ========================================================================== */
+
+@font-face { font-family: "HMS"; src: url("fonts/HarmonyOS_Sans_SC_Regular.woff2") format("woff2"); font-weight: 400; font-display: swap; }
+@font-face { font-family: "HMS"; src: url("fonts/HarmonyOS_Sans_SC_Bold.woff2") format("woff2"); font-weight: 700; font-display: swap; }
+
+:root {
+  --ink:   #f2f2f0;
+  --ink-2: #b8babd;
+  --ink-3: #989a9e;
+  --bg-hi: #3b3d41;
+  --bg:    #2b2c2f;
+  --bg-lo: #1d1e20;
+  --panel: rgba(24, 25, 27, .9);
+  --tile-a: #5a5c60;
+  --tile-b: #45474b;
+  --edge:  rgba(255, 255, 255, .16);
+  --light-a: #f4f4f2;
+  --light-b: #d3d4d2;
+  --blue:  #1680c0;
+  --blue-2:#0e64a2;
+  --yellow:#ffc81a;
+  --cyan:  #2cc0f5;
+  --lime:  #a7e22c;
+  --orange:#ff7b1c;
+  --red:   #e2352f;
+
+  --f-sans: "HMS", "HarmonyOS Sans SC", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
+  --f-num:  "Bahnschrift SemiCondensed", "Bahnschrift Condensed", "Bahnschrift", "Arial Narrow", sans-serif;
+  --f-mono: "Cascadia Mono", "Cascadia Code", "JetBrains Mono", Consolas, monospace;
+  --ease: cubic-bezier(.2, .8, .2, 1);
+  --shadow: 0 3px 10px rgba(0, 0, 0, .45);
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { height: 100%; margin: 0; }
+body {
+  color: var(--ink);
+  font: 14px/1.6 var(--f-sans);
+  -webkit-font-smoothing: antialiased;
+  background: radial-gradient(ellipse 80% 70% at 55% 35%, var(--bg-hi) 0%, var(--bg) 55%, var(--bg-lo) 100%) fixed;
+  display: grid;
+  grid-template-columns: 300px minmax(0, 1fr) 300px;
+  grid-template-rows: 76px minmax(0, 1fr);
+  grid-template-areas: "top top top" "side main aside";
+  height: 100vh;
+  overflow: hidden;
+}
+button { font: inherit; color: inherit; }
+svg.i { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: square; stroke-linejoin: miter; flex: none; }
+.num { font-family: var(--f-num); font-weight: 700; font-variant-numeric: tabular-nums; }
+.mono { font-family: var(--f-mono); }
+.en { font: 600 10px/1 var(--f-num); letter-spacing: .14em; text-transform: uppercase; color: var(--ink-3); }
+:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+kbd { font: 700 11px/1 var(--f-num); padding: 3px 5px; border: 1px solid currentColor; opacity: .75; }
+
+html[data-state="approval"] [data-show]:not([data-show~="approval"]),
+html[data-state="running"]  [data-show]:not([data-show~="running"]),
+html[data-state="halted"]   [data-show]:not([data-show~="halted"]),
+html[data-state="idle"]     [data-show]:not([data-show~="idle"]) { display: none !important; }
+
+/* 灰色实心块：方舟最基本的「按钮/条目」材质 */
+.tile {
+  background: linear-gradient(180deg, var(--tile-a), var(--tile-b));
+  border: 1px solid var(--edge);
+  box-shadow: var(--shadow), inset 0 1px 0 rgba(255, 255, 255, .1);
+}
+
+/* ============================ 顶栏 ============================ */
+.top { grid-area: top; display: flex; align-items: center; gap: 12px; padding: 0 18px; }
+.navpad { display: flex; height: 50px; box-shadow: var(--shadow); }
+.navpad button {
+  appearance: none; border: 0; cursor: pointer;
+  display: grid; place-items: center;
+  background: linear-gradient(180deg, #3c3d41, #27282b);
+  transition: background-color 160ms var(--ease), filter 160ms var(--ease);
+}
+.navpad button:hover { filter: brightness(1.25); }
+.navpad .back { width: 72px; border-right: 3px solid #161718; }
+.navpad .home { width: 150px; position: relative; overflow: hidden; }
+.navpad .home .mesh { position: absolute; inset: 0; width: 100%; height: 100%; stroke: rgba(255, 255, 255, .28); stroke-width: 1; fill: none; }
+.navpad .home svg.i { position: relative; width: 26px; height: 26px; }
+.infobtn {
+  appearance: none; border: 0; cursor: pointer;
+  width: 50px; height: 50px; display: grid; place-items: center;
+  background: linear-gradient(180deg, #3c3d41, #27282b); box-shadow: var(--shadow);
+}
+.infobtn:hover { filter: brightness(1.25); }
+
+.pagetitle { display: flex; align-items: center; gap: 16px; margin-left: 14px; }
+.pagetitle .big {
+  display: grid; gap: 2px;
+  font: italic 700 30px/.9 var(--f-num); letter-spacing: -.01em;
+  color: #fff;
+}
+.pagetitle .big small { font: 700 12px/1 var(--f-sans); font-style: normal; letter-spacing: .3em; color: var(--ink-2); padding-left: 2px; }
+.pagetitle .vr { width: 2px; height: 36px; background: rgba(255, 255, 255, .7); }
+.pagetitle .who { display: flex; align-items: baseline; gap: 10px; font: 700 24px/1 var(--f-sans); }
+.pagetitle .who .code { font: 700 22px/1 var(--f-num); color: var(--ink-2); }
+.top .spacer { flex: 1; }
+
+/* 右上资源条：彩色图标方块 + 大号数字 */
+.res { display: flex; align-items: stretch; height: 42px; background: linear-gradient(90deg, rgba(0, 0, 0, .55), rgba(0, 0, 0, .3)); }
+.res .ic { width: 42px; display: grid; place-items: center; color: #151515; }
+.res .ic svg.i { width: 24px; height: 24px; stroke-width: 2.4; }
+.res .v { display: flex; align-items: baseline; gap: 2px; padding: 0 16px 0 12px; font: 700 27px/42px var(--f-num); letter-spacing: .01em; font-variant-numeric: tabular-nums; }
+.res .v small { font-size: 16px; color: var(--ink-3); }
+.res.ctx .ic { background: var(--yellow); }
+.res.files .ic { background: var(--lime); }
+.res.time .ic { background: var(--cyan); }
+
+.specimen { display: flex; align-items: center; gap: 2px; margin-left: 10px; }
+.specimen .en { margin-right: 8px; }
+.specimen button {
+  appearance: none; border: 1px solid var(--edge); cursor: pointer;
+  background: rgba(0, 0, 0, .35); color: var(--ink-2);
+  font-size: 12px; padding: 5px 9px;
+}
+.specimen button:hover { color: var(--ink); }
+.specimen button[aria-pressed="true"] { background: var(--light-a); color: #1a1a1a; }
+
+/* ============================ 左栏 ============================ */
+.side { grid-area: side; display: flex; flex-direction: column; gap: 10px; padding: 6px 16px 16px 18px; min-height: 0; overflow-y: auto; scrollbar-width: none; }
+.side::-webkit-scrollbar { display: none; }
+
+.bluetile {
+  appearance: none; cursor: pointer; text-align: left;
+  position: relative; overflow: hidden;
+  display: flex; align-items: center; justify-content: space-between;
+  height: 72px; padding: 0 18px 0 22px;
+  background: linear-gradient(180deg, var(--blue), var(--blue-2));
+  border: 1px solid rgba(255, 255, 255, .35);
+  box-shadow: var(--shadow), inset 0 1px 0 rgba(255, 255, 255, .25);
+  font: 700 21px/1 var(--f-sans); letter-spacing: .08em; color: #fff;
+  transition: filter 160ms var(--ease);
+}
+.bluetile:hover { filter: brightness(1.1); }
+.bluetile .wm { position: absolute; right: 64px; top: -6px; font: italic 700 64px/1 var(--f-num); color: rgba(255, 255, 255, .1); pointer-events: none; }
+.bluetile svg.i { width: 34px; height: 34px; stroke-width: 2.4; }
+
+.switchrow { display: flex; align-items: center; justify-content: space-between; height: 58px; padding: 0 14px 0 20px; }
+.switchrow .lbl { font: 700 18px/1 var(--f-sans); letter-spacing: .04em; }
+.switch {
+  appearance: none; border: 0; cursor: pointer;
+  position: relative; width: 104px; height: 36px; border-radius: 18px;
+  background: #2a2b2e; box-shadow: inset 0 2px 4px rgba(0, 0, 0, .5);
+  font: 700 17px/36px var(--f-num); letter-spacing: .06em; text-align: right; padding-right: 14px;
+  transition: background-color 220ms var(--ease);
+}
+.switch::before { content: "OFF"; }
+.switch::after {
+  content: ""; position: absolute; left: 4px; top: 4px; width: 28px; height: 28px; border-radius: 50%;
+  background: #f4f4f4; box-shadow: 0 1px 3px rgba(0, 0, 0, .5);
+  transition: transform 220ms var(--ease);
+}
+.switch[aria-checked="true"] { background: var(--blue); text-align: left; padding: 0 0 0 14px; }
+.switch[aria-checked="true"]::before { content: "ON"; }
+.switch[aria-checked="true"]::after { transform: translateX(68px); }
+
+.sechead { display: flex; align-items: center; gap: 10px; margin: 8px 0 0; }
+.sechead::after { content: ""; flex: 1; height: 1px; background: rgba(255, 255, 255, .18); }
+.chip-sec {
+  display: inline-flex; align-items: center; gap: 8px;
+  background: #e8e8e6; color: #151515;
+  font: 700 14px/1 var(--f-sans); padding: 5px 10px 5px 9px;
+}
+.chip-sec::after { content: "▸▸"; font-size: 10px; letter-spacing: -.1em; color: #6d6f73; }
+
+.sessions { list-style: none; margin: 0; padding: 0; display: grid; gap: 7px; }
+.sess {
+  appearance: none; cursor: pointer; text-align: left; width: 100%;
+  position: relative; overflow: hidden;
+  display: grid; grid-template-columns: 50px 1fr; grid-template-rows: auto auto; column-gap: 10px; row-gap: 7px;
+  padding: 12px 14px 12px 12px;
+  transition: filter 160ms var(--ease);
+}
+.sess:hover { filter: brightness(1.12); }
+.sess .no { grid-row: 1 / 3; align-self: center; font: italic 700 34px/1 var(--f-num); color: rgba(255, 255, 255, .85); text-align: center; }
+.sess .t { font: 700 16px/1.2 var(--f-sans); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sess .m { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--ink-2); }
+.pill-dark { display: inline-flex; align-items: center; gap: 6px; background: #161718; color: #e8e8e8; padding: 2px 8px; border-radius: 3px; font-size: 12px; line-height: 1.5; }
+.pill-dark i { width: 7px; height: 7px; display: inline-block; }
+.sess .d { margin-left: auto; font: 600 12px/1 var(--f-num); color: #7cc6f0; }
+.sess[aria-current="true"] { background: linear-gradient(180deg, var(--light-a), var(--light-b)); color: #151515; }
+.sess[aria-current="true"] .no { color: #232427; }
+.sess[aria-current="true"] .m { color: #4b4d51; }
+.sess[aria-current="true"] .d { color: var(--blue-2); }
+/* 左上角标：橙三角 = 这个会话在等你（照商店左栏的限时角标） */
+.corner { position: absolute; left: 0; top: 0; width: 30px; height: 30px; background: linear-gradient(135deg, var(--orange) 50%, transparent 50%); }
+.corner::after { content: "!"; position: absolute; left: 5px; top: 1px; font: 700 13px/1 var(--f-num); color: #1a1a1a; }
+
+.ws { margin-top: auto; padding: 12px 14px; background: rgba(0, 0, 0, .35); display: grid; gap: 6px; }
+.ws .row { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; }
+.ws .v { font: 12px/1.3 var(--f-mono); color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* ============================ 中栏：记录簿 ============================ */
+.main { grid-area: main; display: grid; grid-template-rows: minmax(0, 1fr) auto; min-height: 0; }
+.log {
+  overflow-y: auto; padding: 14px 32px 28px;
+  scrollbar-width: thin; scrollbar-color: rgba(255, 255, 255, .25) transparent;
+  /* 基建画布的十字准星 + 竖排小字：只露在消息之间的空白里 */
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><g stroke='%23ffffff' stroke-opacity='.12' stroke-width='1'><path d='M90 80v20M80 90h20'/></g><text x='14' y='40' font-family='Bahnschrift,Arial' font-size='7' fill='%23ffffff' fill-opacity='.09' transform='rotate(-90 14 40)'>T3RRA-REC</text></svg>");
+  background-attachment: local;
+}
+.log .inner { max-width: 900px; margin: 0 auto; display: grid; gap: 16px; }
+
+.tag-black { display: inline-block; background: #121213; color: #fff; font: 700 15px/1 var(--f-sans); letter-spacing: .06em; padding: 8px 12px; box-shadow: 0 2px 6px rgba(0, 0, 0, .4); }
+.seg2 { display: inline-flex; height: 30px; box-shadow: 0 2px 6px rgba(0, 0, 0, .35); }
+.seg2 > * { display: flex; align-items: center; gap: 6px; padding: 0 10px; font-size: 13px; }
+.seg2 .a { background: #2e2f33; color: var(--ink); }
+.seg2 .b { background: #cfd0ce; color: #151515; font-family: var(--f-num); font-weight: 700; font-size: 15px; min-width: 56px; justify-content: flex-end; }
+.chip-light { display: inline-block; background: #dcdcda; color: #151515; font: 700 13px/1 var(--f-num); letter-spacing: .12em; padding: 5px 8px 4px; }
+
+.msg header { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.msg header .spacer { flex: 1; }
+.msg.order .body {
+  background: var(--panel); border: 1px solid rgba(255, 255, 255, .08);
+  box-shadow: var(--shadow);
+  padding: 16px 20px; font-size: 15px; line-height: 1.8;
+}
+.msg.order .body p { margin: 0; }
+.msg.reply .body { background: rgba(33, 34, 37, .78); padding: 16px 20px; border-left: 3px solid #dcdcda; }
+.prose { font-size: 15px; line-height: 1.8; }
+.prose p { margin: 0 0 .6em; }
+.prose p:last-child { margin: 0; }
+.prose ul { margin: .2em 0 .7em; padding: 0; list-style: none; }
+.prose li { padding-left: 18px; position: relative; }
+.prose li::before { content: ""; position: absolute; left: 2px; top: .7em; width: 7px; height: 7px; background: var(--ink-3); transform: rotate(45deg) scale(.8); }
+.prose code, .ask code, .detail .hd code { font: .86em var(--f-mono); background: rgba(255, 255, 255, .09); padding: 2px 6px; }
+.prose b { color: #fff; }
+.msg time { font: 600 13px/1 var(--f-num); color: var(--ink-3); }
+
+/* ---- 工单：基建站点卡 ---- */
+.works { display: grid; gap: 8px; }
+.works .cap { display: flex; align-items: center; gap: 10px; }
+.works .cap::after { content: ""; flex: 1; height: 1px; background: rgba(255, 255, 255, .12); }
+.tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(206px, 1fr)); gap: 8px; }
+.st {
+  appearance: none; cursor: pointer; text-align: left;
+  position: relative; overflow: hidden;
+  height: 100px; padding: 12px 14px 0 24px;
+  background:
+    linear-gradient(rgba(255, 255, 255, .035) 1px, transparent 1px) 0 0 / 14px 14px,
+    linear-gradient(90deg, rgba(255, 255, 255, .035) 1px, transparent 1px) 0 0 / 14px 14px,
+    linear-gradient(180deg, #2b2c2f, #202124);
+  border: 1px solid rgba(255, 255, 255, .13);
+  box-shadow: var(--shadow);
+  transition: filter 160ms var(--ease), outline-color 160ms var(--ease);
+  outline: 2px solid transparent; outline-offset: 3px;
+}
+.st:hover { filter: brightness(1.15); }
+.st[aria-pressed="true"] { outline-color: var(--blue); }
+.st::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 9px; background: var(--k); }
+.st .wm { position: absolute; right: 40px; top: 18px; width: 58px; height: 58px; color: rgba(255, 255, 255, .06); stroke-width: 2.5; }
+.st .nm { display: flex; align-items: center; gap: 8px; font: 700 19px/1.1 var(--f-sans); letter-spacing: .04em; }
+.st .nm .bars { display: inline-flex; gap: 2px; }
+.st .nm .bars i { width: 4px; height: 13px; background: var(--k); }
+.st .nm .en { color: var(--ink-3); font-size: 9.5px; }
+.st .ss { margin-top: 5px; font: 700 12px/1 var(--f-sans); color: var(--k); display: flex; align-items: center; gap: 4px; }
+.st .ss .arr i { font-style: normal; }
+.st.is-run .ss .arr i { animation: arr 1.2s steps(1) infinite; }
+.st.is-run .ss .arr i:nth-child(2) { animation-delay: .2s; }
+.st.is-run .ss .arr i:nth-child(3) { animation-delay: .4s; }
+.st .n { position: absolute; right: 14px; bottom: 14px; font: italic 700 32px/1 var(--f-num); letter-spacing: -.01em; font-variant-numeric: tabular-nums; }
+.st .n small { font-size: 15px; font-style: normal; color: var(--ink-3); margin-left: 2px; }
+.st .pg { position: absolute; left: 24px; right: 64px; bottom: 9px; height: 4px; display: grid; grid-template-columns: repeat(5, 1fr); gap: 3px; }
+.st .pg i { background: rgba(255, 255, 255, .16); }
+.st .pg i.on { background: rgba(255, 255, 255, .78); }
+.st.is-run .pg i.on:last-of-type { animation: arr 1.2s steps(1) infinite; }
+.k-bash { --k: var(--yellow); }
+.k-read { --k: var(--cyan); }
+.k-edit { --k: var(--lime); }
+.k-halt { --k: var(--red); }
+
+.detail { background: rgba(17, 18, 20, .94); border: 1px solid rgba(255, 255, 255, .1); border-top: 2px solid var(--blue); box-shadow: var(--shadow); }
+.detail .hd { display: flex; align-items: center; gap: 12px; padding: 10px 16px; border-bottom: 1px solid rgba(255, 255, 255, .08); font-size: 13px; color: var(--ink-2); }
+.detail .hd b { font: italic 700 16px/1 var(--f-num); color: var(--ink); }
+.detail .hd .r { margin-left: auto; display: flex; gap: 10px; }
+.detail pre, .diff { margin: 0; font: 12.5px/1.7 var(--f-mono); color: var(--ink-2); }
+.detail pre { padding: 12px 16px 14px; white-space: pre-wrap; max-height: 260px; overflow: auto; }
+.detail pre .hit { color: var(--ink); }
+.detail .note { padding: 7px 16px 9px; font-size: 12px; color: var(--ink-3); border-top: 1px solid rgba(255, 255, 255, .06); }
+.diff { padding: 6px 0; overflow-x: auto; }
+.diff .f { padding: 4px 16px 6px; color: var(--ink-3); font-size: 12px; }
+.dl { display: grid; grid-template-columns: 46px 16px 1fr; padding-right: 16px; white-space: pre; }
+.dl .ln { text-align: right; padding-right: 10px; color: var(--ink-3); }
+.dl.add { background: rgba(167, 226, 44, .08); }
+.dl.add .g { color: var(--lime); }
+.dl.del { background: rgba(226, 53, 47, .1); }
+.dl.del .g { color: #ff6a5e; }
+.plus { color: var(--lime); font: 700 13px/1 var(--f-num); }
+.minus { color: #ff6a5e; font: 700 13px/1 var(--f-num); }
+.caret { display: inline-block; width: 8px; height: 1.1em; vertical-align: -2px; background: var(--yellow); animation: blink 1s steps(1) infinite; }
+
+/* ---- 批准：道具弹窗式的浅色卡，本屏唯一的浅色大块 ---- */
+.ask {
+  background: linear-gradient(180deg, #f2f2f0, #dfe0de);
+  color: #161616;
+  box-shadow: 0 12px 34px rgba(0, 0, 0, .55);
+  display: grid; grid-template-columns: 170px minmax(0, 1fr);
+  margin-top: 6px;
+}
+.ask .pic { display: grid; align-content: center; justify-items: center; gap: 14px; padding: 22px 0 18px 22px; }
+.ask .pic .doc { width: 92px; height: 110px; position: relative; background: linear-gradient(180deg, #3b3d41, #1f2023); clip-path: polygon(0 0, 72% 0, 100% 22%, 100% 100%, 0 100%); box-shadow: 0 6px 14px rgba(0, 0, 0, .35); }
+.ask .pic .doc::before { content: ".css"; position: absolute; left: 10px; bottom: 12px; font: 700 18px/1 var(--f-num); color: #fff; }
+.ask .pic .doc::after { content: ""; position: absolute; left: 10px; right: 20px; top: 34px; height: 30px; background: repeating-linear-gradient(180deg, rgba(255, 255, 255, .5) 0 2px, transparent 2px 8px); }
+.pill-view {
+  appearance: none; border: 0; cursor: pointer;
+  display: inline-flex; align-items: center; gap: 6px;
+  background: rgba(40, 41, 44, .8); color: #fff; border-radius: 14px;
+  font-size: 13px; padding: 5px 12px 5px 9px;
+}
+.pill-view svg.i { width: 15px; height: 15px; }
+.pill-view:hover { background: #2b2c2f; }
+.ask .content { padding: 22px 24px 18px 22px; display: grid; gap: 12px; align-content: start; }
+.ask .row1 { display: flex; align-items: center; gap: 12px; }
+.ask .row1 .seg2 { margin-left: auto; }
+.ask .row1 .seg2 .a { background: #2b2c30; color: #fff; }
+.ask .row1 .seg2 .a svg.i { width: 16px; height: 16px; color: var(--cyan); }
+.ask .row1 .seg2 .b { background: #c8c9c7; }
+.ask .path { font: 700 15.5px/1.3 var(--f-mono); color: #111; display: flex; gap: 12px; align-items: baseline; }
+.ask .path .plus { color: #4f8f0a; } .ask .path .minus { color: #c0271f; }
+.ask .why { font-style: italic; font-size: 15px; line-height: 1.8; color: #3a3b3e; }
+.ask .why code { background: rgba(0, 0, 0, .07); font-style: normal; }
+.ask .src { display: grid; gap: 4px; }
+.ask .src .k { font-size: 14px; color: #5e6064; }
+.ask .src .v { font-size: 14px; color: #1a1a1a; }
+.ask .askdiff { background: #1b1c1e; color: var(--ink-2); }
+.ask .bar {
+  grid-column: 1 / -1;
+  display: flex; align-items: stretch; height: 58px;
+  background:
+    radial-gradient(rgba(255, 255, 255, .13) 1px, transparent 1.4px) 0 0 / 5px 5px,
+    linear-gradient(180deg, #5b5c5f, #48494c);
+}
+.ask .bar button {
+  appearance: none; border: 0; cursor: pointer; flex: 1;
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+  background: transparent; color: #f2f2f2;
+  font: 700 17px/1 var(--f-sans); letter-spacing: .1em;
+  border-left: 1px solid rgba(255, 255, 255, .15);
+  transition: background-color 160ms var(--ease);
+}
+.ask .bar button:first-child { border-left: 0; flex: 1.4; background: linear-gradient(180deg, var(--blue), var(--blue-2)); }
+.ask .bar button:first-child:hover { filter: brightness(1.1); }
+.ask .bar button:hover { background-color: rgba(255, 255, 255, .08); }
+.ask .bar button.deny { color: #ffb3ae; }
+.ask .bar .ok { width: 30px; height: 30px; border-radius: 50%; background: #f0f0f0; color: var(--blue-2); display: grid; place-items: center; }
+.ask .bar .ok svg.i { width: 18px; height: 18px; stroke-width: 3; }
+.ask .bar kbd { font-size: 10px; }
+
+.haltline { display: flex; align-items: center; gap: 14px; height: 40px; padding: 0 18px; background: linear-gradient(90deg, var(--red), rgba(226, 53, 47, .15) 70%, transparent); font: 700 14px/1 var(--f-sans); letter-spacing: .06em; box-shadow: var(--shadow); }
+.haltline .en { color: rgba(255, 255, 255, .75); }
+
+/* ============================ 指令坞 ============================ */
+.dock { background: linear-gradient(180deg, rgba(20, 21, 23, .92), #151617); border-top: 1px solid rgba(255, 255, 255, .1); padding: 12px 32px 14px; }
+.dock .inner { max-width: 900px; margin: 0 auto; display: grid; gap: 10px; }
+.dock textarea {
+  display: block; width: 100%; resize: none;
+  background: #26272a; border: 1px solid rgba(255, 255, 255, .12); outline: none;
+  color: var(--ink); font: 15px/1.7 var(--f-sans);
+  padding: 10px 14px; min-height: 64px;
+  box-shadow: inset 0 2px 6px rgba(0, 0, 0, .35);
+  transition: border-color 160ms var(--ease);
+}
+.dock textarea:focus { border-color: var(--blue); }
+.dock textarea::placeholder { color: var(--ink-3); }
+.dock .row { display: flex; align-items: center; gap: 14px; }
+.dock .row .spacer { flex: 1; }
+.dock .cnt { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ink-2); }
+.dock .cnt b { font: 700 16px/1 var(--f-num); color: var(--ink); }
+.dock .hint { font-size: 12px; color: var(--ink-3); }
+
+/* 设置页的分段按钮：实心块之间用短线相连 */
+.seg { display: flex; align-items: center; }
+.seg i { width: 14px; height: 2px; background: rgba(255, 255, 255, .35); }
+.seg button {
+  appearance: none; cursor: pointer;
+  height: 38px; min-width: 88px; padding: 0 14px;
+  background: #2d2e31; border: 1px solid rgba(255, 255, 255, .14); color: var(--ink);
+  font: 15px/1 var(--f-sans);
+  box-shadow: 0 2px 5px rgba(0, 0, 0, .4);
+}
+.seg button:hover { background: #38393d; }
+.seg button[aria-pressed="true"] { background: linear-gradient(180deg, var(--blue), var(--blue-2)); border-color: rgba(255, 255, 255, .3); }
+
+.btn {
+  appearance: none; cursor: pointer;
+  height: 44px; padding: 0 22px;
+  display: inline-flex; align-items: center; justify-content: center; gap: 10px;
+  font: 700 16px/1 var(--f-sans); letter-spacing: .08em;
+  border: 1px solid rgba(255, 255, 255, .2);
+  box-shadow: var(--shadow);
+  transition: filter 160ms var(--ease);
+}
+.btn:hover { filter: brightness(1.12); }
+.btn.gray { background: linear-gradient(180deg, #4f5054, #3b3c40); }
+.btn.blue { background: linear-gradient(180deg, var(--blue), var(--blue-2)); min-width: 168px; }
+.btn.red { background: linear-gradient(180deg, #ec453d, #b92620); min-width: 168px; }
+
+/* ============================ 右栏：干员详情式 ============================ */
+.aside { grid-area: aside; padding: 6px 18px 16px 12px; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; scrollbar-width: none; }
+.aside::-webkit-scrollbar { display: none; }
+
+.lvbox { display: flex; align-items: center; gap: 14px; background: linear-gradient(90deg, rgba(0, 0, 0, .55), rgba(0, 0, 0, .15)); padding: 10px 12px 10px 10px; }
+.ring {
+  --p: 38;
+  width: 112px; height: 112px; border-radius: 50%; flex: none;
+  display: grid; place-items: center; position: relative;
+  background: conic-gradient(var(--yellow) calc(var(--p) * 1%), rgba(255, 255, 255, .16) 0);
+  -webkit-mask: radial-gradient(circle, transparent 50px, #000 51px);
+          mask: radial-gradient(circle, transparent 50px, #000 51px);
+}
+.ringwrap { position: relative; width: 112px; height: 112px; flex: none; }
+.ringwrap .inside { position: absolute; inset: 0; display: grid; place-items: center; align-content: center; gap: 2px; }
+.ringwrap .inside .en { color: var(--ink-2); }
+.ringwrap .inside b { font: 700 52px/.85 var(--f-num); letter-spacing: -.02em; }
+.ringwrap .inside b small { font-size: 20px; }
+.lvinfo { display: grid; gap: 6px; flex: 1; min-width: 0; }
+.lvinfo .k { font: 700 11px/1 var(--f-num); letter-spacing: .12em; color: var(--yellow); }
+.lvinfo .v { font: 700 22px/1 var(--f-num); }
+.lvinfo .v small { font-size: 15px; color: var(--ink-3); }
+.lvinfo .plus-btn { justify-self: start; appearance: none; border: 1px solid rgba(255, 255, 255, .25); background: rgba(0, 0, 0, .3); cursor: pointer; width: 34px; height: 34px; display: grid; place-items: center; }
+.lvinfo .plus-btn:hover { background: rgba(255, 255, 255, .1); }
+
+.stats { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 6px; margin-top: 8px; }
+.stat { display: flex; align-items: stretch; height: 30px; }
+.stat .ic { width: 30px; display: grid; place-items: center; background: #f0f0f0; color: #151515; }
+.stat .ic svg.i { width: 17px; height: 17px; stroke-width: 2.6; }
+.stat .v { flex: 1; display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 0 8px; background: linear-gradient(90deg, rgba(90, 92, 96, .75), rgba(90, 92, 96, .25)); font: 700 16px/1 var(--f-num); }
+.stat .v small { font: 12px/1 var(--f-sans); color: var(--ink-2); }
+
+.changes { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 4px; }
+.changes li { display: grid; grid-template-columns: 5px minmax(0, 1fr) auto; gap: 10px; align-items: center; height: 32px; padding-right: 10px; background: rgba(0, 0, 0, .3); font: 12.5px/1 var(--f-mono); }
+.changes li::before { content: ""; align-self: stretch; background: var(--lime); }
+.changes li.new::before { background: var(--cyan); }
+.changes .p { color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.changes .p b { color: var(--ink); font-weight: 400; }
+.changes .d { display: flex; gap: 7px; }
+
+.plan { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 5px; }
+.plan li { position: relative; display: flex; align-items: center; gap: 10px; min-height: 38px; padding: 6px 12px; font-size: 14px; }
+.plan li .ck { width: 18px; height: 18px; flex: none; border: 2px solid rgba(255, 255, 255, .35); display: grid; place-items: center; }
+.plan li.done { color: var(--ink-3); background: rgba(0, 0, 0, .25); }
+.plan li.done .ck { border-color: var(--lime); background: var(--lime); color: #151515; }
+.plan li.done .ck svg.i { width: 12px; height: 12px; stroke-width: 3.5; }
+.plan li.todo { background: rgba(0, 0, 0, .25); color: var(--ink-2); }
+.plan li.now { background: linear-gradient(180deg, var(--light-a), var(--light-b)); color: #151515; font-weight: 700; }
+.plan li.now .ck { border-color: #151515; }
+.plan li.now .dot { position: absolute; right: -4px; top: -4px; width: 14px; height: 14px; background: var(--orange); transform: rotate(45deg); box-shadow: 0 0 0 2px #2b2c2f; }
+
+.engine { margin-top: auto; display: flex; align-items: center; gap: 10px; padding: 12px 14px; background: rgba(0, 0, 0, .35); font-size: 13px; color: var(--ink-2); }
+.engine b { font: 700 14px/1 var(--f-num); letter-spacing: .12em; color: var(--ink); }
+.engine .ok { width: 9px; height: 9px; background: var(--lime); }
+.engine .mono { margin-left: auto; font-size: 11.5px; }
+
+.toast {
+  position: fixed; left: 50%; bottom: 150px; transform: translate(-50%, 16px);
+  display: flex; align-items: center; gap: 12px;
+  background: #151617; color: var(--ink); border-left: 6px solid var(--blue);
+  box-shadow: var(--shadow);
+  padding: 12px 20px; font-size: 14px; font-weight: 700;
+  opacity: 0; pointer-events: none; z-index: 10;
+  transition: opacity 220ms var(--ease), transform 220ms var(--ease);
+}
+.toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+.flash { animation: flash 900ms var(--ease); }
+
+@keyframes arr { 0% { opacity: .25; } 33% { opacity: 1; } 100% { opacity: 1; } }
+@keyframes blink { 50% { opacity: 0; } }
+@keyframes flash { 0%, 40% { outline: 2px solid var(--blue); outline-offset: 4px; } 100% { outline: 2px solid transparent; outline-offset: 4px; } }
+@keyframes enter { from { opacity: 0; translate: -18px 0; } to { opacity: 1; translate: 0 0; } }
+.enter { animation: enter 360ms var(--ease) backwards; animation-delay: calc(var(--i, 0) * 40ms); }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}
+
+@media (max-width: 1320px) {
+  body { grid-template-columns: 270px minmax(0, 1fr); grid-template-areas: "top top" "side main"; }
+  .aside, .res.time { display: none; }
+}
+@media (max-width: 920px) {
+  body { grid-template-columns: minmax(0, 1fr); grid-template-areas: "top" "main"; }
+  .side, .res, .pagetitle .who, .specimen .en { display: none; }
+  .log { padding: 12px 14px 20px; }
+  .dock { padding: 10px 14px 12px; }
+  .ask { grid-template-columns: 1fr; }
+  .ask .pic { display: none; }
+  .dock .hint, .dock .cnt { display: none; }
+}
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-back" viewBox="0 0 24 24"><path d="M15 4l-8 8 8 8"/></symbol>
+  <symbol id="i-home" viewBox="0 0 24 24"><path d="M3 11l9-7 9 7M6 9v11h12V9"/><path d="M10 20v-6h4v6"/></symbol>
+  <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 10v7M12 6.5v1"/></symbol>
+  <symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13 2L5 14h6l-1 8 8-12h-6z"/></symbol>
+  <symbol id="i-files" viewBox="0 0 24 24"><path d="M8 3h8l4 4v12H8zM4 7v14h12"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></symbol>
+  <symbol id="i-newsess" viewBox="0 0 24 24"><path d="M4 4h10M4 4v16h16V10"/><path d="M17 3v8M13 7h8"/></symbol>
+  <symbol id="i-term" viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="16"/><path d="M6 9l4 3-4 3M12 15h6"/></symbol>
+  <symbol id="i-read" viewBox="0 0 24 24"><path d="M5 3h9l5 5v13H5z"/><circle cx="11" cy="14" r="3"/><path d="M13 16l3 3"/></symbol>
+  <symbol id="i-edit" viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13 7l4 4"/></symbol>
+  <symbol id="i-write" viewBox="0 0 24 24"><path d="M5 3h9l5 5v13H5z"/><path d="M12 10v7M8.5 13.5h7"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M4 12l5 5 11-11"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="11"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="10" cy="10" r="6"/><path d="M15 15l6 6"/></symbol>
+  <symbol id="i-in" viewBox="0 0 24 24"><path d="M12 3v14M6 11l6 6 6-6M4 21h16"/></symbol>
+  <symbol id="i-out" viewBox="0 0 24 24"><path d="M12 21V7M6 13l6-6 6 6M4 3h16"/></symbol>
+  <symbol id="i-tool" viewBox="0 0 24 24"><path d="M14 6a4 4 0 0 0 5 5l-9 9-4-4 9-9z"/></symbol>
+  <symbol id="i-coin" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9 9h5a2 2 0 0 1 0 4H9m0 0h6"/></symbol>
+  <symbol id="i-mail" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14"/><path d="M3 6l9 7 9-7"/></symbol>
+</svg>
+
+<!-- ============================ 顶栏 ============================ -->
+<header class="top">
+  <div class="navpad">
+    <button type="button" class="back" data-todo="返回" aria-label="返回"><svg class="i"><use href="#i-back"/></svg></button>
+    <button type="button" class="home" data-todo="工作区首页" aria-label="工作区首页">
+      <svg class="mesh" viewBox="0 0 150 50" preserveAspectRatio="none" aria-hidden="true"><path d="M8 40L30 8 52 30 76 4 98 26 120 10 142 38M8 40L52 30 98 26 142 38M30 8L76 4 120 10M30 8l22 22 24-26 22 22 22-16M52 30l-6 18M98 26l6 22M76 4l0 44"/></svg>
+      <svg class="i"><use href="#i-home"/></svg>
+    </button>
+  </div>
+  <button type="button" class="infobtn" data-todo="快捷键与帮助" aria-label="帮助"><svg class="i"><use href="#i-info"/></svg></button>
+
+  <div class="pagetitle">
+    <span class="big">RECORD<small>作业记录</small></span>
+    <span class="vr" aria-hidden="true"></span>
+    <span class="who"><span class="code">S-04</span>主题令牌抽取</span>
+  </div>
+
+  <div class="spacer"></div>
+
+  <div class="res ctx" title="上下文用量"><span class="ic"><svg class="i"><use href="#i-bolt"/></svg></span><span class="v">76K<small>/200K</small></span></div>
+  <div class="res files" title="本轮改动文件"><span class="ic"><svg class="i"><use href="#i-files"/></svg></span><span class="v"><span data-show="approval">05</span><span data-show="running halted idle">06</span></span></div>
+  <div class="res time" title="本轮用时"><span class="ic"><svg class="i"><use href="#i-clock"/></svg></span><span class="v"><span data-show="approval running halted">02:14</span><span data-show="idle">04:02</span></span></div>
+
+  <div class="specimen" role="group" aria-label="样张状态">
+    <span class="en">样张</span>
+    <button type="button" data-go="approval" aria-pressed="true">待批准</button>
+    <button type="button" data-go="running" aria-pressed="false">运行中</button>
+    <button type="button" data-go="halted" aria-pressed="false">已中止</button>
+    <button type="button" data-go="idle" aria-pressed="false">完成</button>
+  </div>
+</header>
+
+<!-- ============================ 左栏 ============================ -->
+<nav class="side" aria-label="会话" data-enter>
+  <button type="button" class="bluetile" data-todo="新建会话"><span class="wm" aria-hidden="true">NEW</span>新建会话<svg class="i"><use href="#i-newsess"/></svg></button>
+  <div class="switchrow tile">
+    <span class="lbl">自动批准</span>
+    <button type="button" class="switch" role="switch" aria-checked="false" aria-label="自动批准" data-label="自动批准"></button>
+  </div>
+
+  <div class="sechead"><span class="chip-sec">会话</span><span class="en">Sessions · 04</span></div>
+  <ul class="sessions">
+    <li><button type="button" class="sess tile" aria-current="true">
+      <span class="corner" data-show="approval" aria-label="等你批准"></span>
+      <span class="no">04</span>
+      <span class="t">主题令牌抽取</span>
+      <span class="m">
+        <span class="pill-dark" data-show="approval"><i style="background:var(--orange)"></i>等你批准</span>
+        <span class="pill-dark" data-show="running"><i style="background:var(--yellow)"></i>运行中</span>
+        <span class="pill-dark" data-show="halted"><i style="background:var(--red)"></i>已中止</span>
+        <span class="pill-dark" data-show="idle"><i style="background:var(--lime)"></i>完成</span>
+        <span class="d">14:02</span>
+      </span>
+    </button></li>
+    <li><button type="button" class="sess tile" data-todo="切换会话">
+      <span class="no">03</span>
+      <span class="t">HALT 改走 session/cancel</span>
+      <span class="m"><span class="pill-dark"><i style="background:var(--lime)"></i>完成</span>9 文件<span class="d">11:40</span></span>
+    </button></li>
+    <li><button type="button" class="sess tile" data-todo="切换会话">
+      <span class="no">02</span>
+      <span class="t">引擎契约审计</span>
+      <span class="m"><span class="pill-dark"><i style="background:var(--lime)"></i>完成</span>3 文件<span class="d">09-24</span></span>
+    </button></li>
+    <li><button type="button" class="sess tile" data-todo="切换会话">
+      <span class="no">01</span>
+      <span class="t">README 改写</span>
+      <span class="m"><span class="pill-dark"><i style="background:var(--red)"></i>已中止</span>1 文件<span class="d">09-23</span></span>
+    </button></li>
+  </ul>
+
+  <div class="ws">
+    <div class="row"><span class="en">Workspace</span><span class="v">C:\DEV\develop\t3rra-C0d3</span></div>
+    <div class="row"><span class="en">Branch</span><span class="v">main · 2 未提交</span></div>
+  </div>
+</nav>
+
+<!-- ============================ 中栏 ============================ -->
+<main class="main">
+  <div class="log" id="log">
+    <div class="inner" data-enter>
+
+      <article class="msg order">
+        <header><span class="tag-black">指令 01</span><span class="spacer"></span><span class="seg2"><span class="a">已送达</span><span class="b">14:02</span></span></header>
+        <div class="body"><p>把 dashboard 里硬编码的颜色抽成主题令牌，写进 <span class="mono">src/theme/tokens.css</span>，旧的引用全部换成变量。先别动 legacy 目录。</p></div>
+      </article>
+
+      <article class="msg reply">
+        <header><span class="chip-light">T3RRA</span><span class="en">回复</span><span class="spacer"></span><time>14:02</time></header>
+        <div class="body prose"><p>先扫一遍硬编码颜色，确认影响范围，再决定令牌怎么分组。</p></div>
+      </article>
+
+      <section class="works">
+        <div class="cap"><span class="chip-sec">工单</span><span class="en">Work orders · #01–#02</span></div>
+        <div class="tiles" data-tiles>
+          <button type="button" class="st k-bash" data-detail="d01" aria-pressed="false">
+            <svg class="i wm" aria-hidden="true"><use href="#i-term"/></svg>
+            <span class="nm">终端<span class="bars"><i></i><i></i><i></i></span></span>
+            <span class="ss">完成 · 0.4s</span>
+            <span class="n">23<small>处</small></span>
+            <span class="pg"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i></span>
+          </button>
+          <button type="button" class="st k-read" data-detail="d02" aria-pressed="false">
+            <svg class="i wm" aria-hidden="true"><use href="#i-read"/></svg>
+            <span class="nm">读取<span class="bars"><i></i><i></i></span></span>
+            <span class="ss">完成 · 0.1s</span>
+            <span class="n">64<small>行</small></span>
+            <span class="pg"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i></span>
+          </button>
+        </div>
+        <div class="detail" id="d01" hidden>
+          <div class="hd"><b>#01</b>终端 · <code>rg -n --glob '*.css' '#[0-9a-fA-F]{3,8}' src/</code><span class="r">23 处 · 6 文件</span></div>
+          <pre>src/dashboard/shell.css:8:   <span class="hit">border-color: #00c8ff;</span>
+src/dashboard/shell.css:10:  <span class="hit">color: #888;</span>
+src/dashboard/panels.css:14: <span class="hit">background: #161a20;</span>
+src/dashboard/cards.css:3:   <span class="hit">color: #e8eaed;</span>
+src/legacy/_colors.css:12:   <span class="hit">background: #1e6fff;</span>
+…（另 18 行）</pre>
+        </div>
+        <div class="detail" id="d02" hidden>
+          <div class="hd"><b>#02</b>读取 · <code>src/dashboard/shell.css</code><span class="r">64 行</span></div>
+          <pre>  1  @import "../legacy/_colors.css";
+  2
+  3  .shell {
+  …</pre>
+        </div>
+      </section>
+
+      <article class="msg reply">
+        <header><span class="chip-light">T3RRA</span><span class="en">回复</span><span class="spacer"></span><time>14:03</time></header>
+        <div class="body prose">
+          <p>共 <b>23 处</b>，分布在 6 个文件里，去重后是 <b>9 个颜色</b>。我按用途归成三组：</p>
+          <ul>
+            <li><code>surface-*</code> 背景层，2 个</li>
+            <li><code>accent*</code> 强调色，2 个</li>
+            <li><code>text-*</code> 文字，3 个</li>
+          </ul>
+          <p>另外 2 个颜色只出现一次，暂时不进令牌，留在原处并加注释。</p>
+        </div>
+      </article>
+
+      <section class="works">
+        <div class="cap"><span class="chip-sec">工单</span><span class="en">Work orders · #03–#04</span></div>
+        <div class="tiles" data-tiles>
+          <button type="button" class="st k-edit" data-detail="d03" aria-pressed="true">
+            <svg class="i wm" aria-hidden="true"><use href="#i-write"/></svg>
+            <span class="nm">写入<span class="bars"><i></i><i></i><i></i></span></span>
+            <span class="ss">新文件 · 完成</span>
+            <span class="n">+12<small>行</small></span>
+            <span class="pg"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i></span>
+          </button>
+          <button type="button" class="st k-edit" data-detail="d04" aria-pressed="false">
+            <svg class="i wm" aria-hidden="true"><use href="#i-edit"/></svg>
+            <span class="nm">编辑 ×4<span class="bars"><i></i><i></i><i></i></span></span>
+            <span class="ss">完成</span>
+            <span class="n">17<small>处</small></span>
+            <span class="pg"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i></span>
+          </button>
+        </div>
+        <div class="detail" id="d03">
+          <div class="hd"><b>#03</b>写入 · <code>src/theme/tokens.css</code><span class="r"><span class="plus">+12</span></span></div>
+          <div class="diff">
+            <div class="dl add"><span class="ln">1</span><span class="g">+</span><span>:root {</span></div>
+            <div class="dl add"><span class="ln">2</span><span class="g">+</span><span>  /* surface */</span></div>
+            <div class="dl add"><span class="ln">3</span><span class="g">+</span><span>  --surface-0: #0f1115;</span></div>
+            <div class="dl add"><span class="ln">4</span><span class="g">+</span><span>  --surface-1: #161a20;</span></div>
+            <div class="dl add"><span class="ln">5</span><span class="g">+</span><span>  /* accent */</span></div>
+            <div class="dl add"><span class="ln">6</span><span class="g">+</span><span>  --accent: #1e6fff;</span></div>
+            <div class="dl add"><span class="ln">7</span><span class="g">+</span><span>  --accent-soft: #00c8ff;</span></div>
+            <div class="dl add"><span class="ln">8</span><span class="g">+</span><span>  /* text */</span></div>
+            <div class="dl add"><span class="ln">9</span><span class="g">+</span><span>  --text-1: #e8eaed;</span></div>
+            <div class="dl add"><span class="ln">10</span><span class="g">+</span><span>  --text-2: #888888;</span></div>
+            <div class="dl add"><span class="ln">11</span><span class="g">+</span><span>  --text-3: #333333;</span></div>
+            <div class="dl add"><span class="ln">12</span><span class="g">+</span><span>}</span></div>
+          </div>
+        </div>
+        <div class="detail" id="d04" hidden>
+          <div class="hd"><b>#04</b>编辑 ×4 · <code>src/dashboard/{shell,panels,cards,nav}.css</code><span class="r"><span class="plus">+17</span><span class="minus">−17</span></span></div>
+          <div class="diff">
+            <div class="f">shell.css</div>
+            <div class="dl"><span class="ln">8</span><span class="g"> </span><span>.shell {</span></div>
+            <div class="dl del"><span class="ln">9</span><span class="g">−</span><span>  border-color: #00c8ff;</span></div>
+            <div class="dl add"><span class="ln">9</span><span class="g">+</span><span>  border-color: var(--accent-soft);</span></div>
+            <div class="dl del"><span class="ln">10</span><span class="g">−</span><span>  color: #888;</span></div>
+            <div class="dl add"><span class="ln">10</span><span class="g">+</span><span>  color: var(--text-2);</span></div>
+            <div class="dl"><span class="ln">11</span><span class="g"> </span><span>}</span></div>
+          </div>
+          <div class="note">另 3 个文件的改动已折叠</div>
+        </div>
+      </section>
+
+      <article class="msg reply">
+        <header><span class="chip-light">T3RRA</span><span class="en">回复</span><span class="spacer"></span><time>14:04</time></header>
+        <div class="body prose">
+          <p>dashboard 下的 17 处引用已全部替换。还剩 <code>src/legacy/_colors.css</code> 里 4 处：dashboard 直接 import 了这个文件，不改就会留下断引用。</p>
+          <p>你说过先别动 legacy，所以这一步先问你。</p>
+        </div>
+      </article>
+
+      <!-- ===== 待批准：道具弹窗式浅色卡 ===== -->
+      <section class="ask" data-show="approval" aria-labelledby="askTitle">
+        <div class="pic">
+          <div class="doc" aria-hidden="true"></div>
+          <button type="button" class="pill-view" id="viewDiff" aria-expanded="false" aria-controls="askDiff"><svg class="i"><use href="#i-search"/></svg>查看改动</button>
+        </div>
+        <div class="content">
+          <div class="row1">
+            <span class="tag-black" id="askTitle">需要你批准</span>
+            <span class="seg2"><span class="a"><svg class="i"><use href="#i-lock"/></svg>已等待</span><span class="b" id="waitT">00:38</span></span>
+          </div>
+          <div class="path">编辑 src/legacy/_colors.css <span class="plus">+4</span><span class="minus">−4</span></div>
+          <div class="why">把 4 处颜色换成对应令牌，其余内容不动。这 4 处被 <code>shell.css:1</code> 直接 import。</div>
+          <div class="src"><span class="k">请求来源</span><span class="v">代理 · 工单 #05 · 仅本会话生效</span></div>
+          <div class="askdiff diff" id="askDiff" hidden>
+            <div class="dl del"><span class="ln">12</span><span class="g">−</span><span>  background: #1e6fff;</span></div>
+            <div class="dl add"><span class="ln">12</span><span class="g">+</span><span>  background: var(--accent);</span></div>
+            <div class="dl del"><span class="ln">19</span><span class="g">−</span><span>  color: #e8eaed;</span></div>
+            <div class="dl add"><span class="ln">19</span><span class="g">+</span><span>  color: var(--text-1);</span></div>
+          </div>
+        </div>
+        <div class="bar">
+          <button type="button" data-act="once"><span class="ok"><svg class="i"><use href="#i-check"/></svg></span>允许一次 <kbd>Y</kbd></button>
+          <button type="button" data-act="always">总是允许 <kbd>A</kbd></button>
+          <button type="button" class="deny" data-todo="拒绝分支">拒绝 <kbd>N</kbd></button>
+        </div>
+      </section>
+
+      <!-- ===== 批准之后 ===== -->
+      <section class="works" data-show="running halted idle">
+        <div class="cap"><span class="chip-sec">工单</span><span class="en">Work orders · #05–#06</span></div>
+        <div class="tiles" data-tiles>
+          <button type="button" class="st k-edit" data-detail="d05" aria-pressed="false">
+            <svg class="i wm" aria-hidden="true"><use href="#i-edit"/></svg>
+            <span class="nm">编辑<span class="bars"><i></i><i></i><i></i></span></span>
+            <span class="ss">已批准 · 一次</span>
+            <span class="n">4<small>处</small></span>
+            <span class="pg"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i></span>
+          </button>
+          <button type="button" class="st k-bash is-run" data-detail="d06" aria-pressed="true" data-show="running">
+            <svg class="i wm" aria-hidden="true"><use href="#i-term"/></svg>
+            <span class="nm">终端<span class="bars"><i></i><i></i><i></i></span></span>
+            <span class="ss">运行中<span class="arr"><i>▶</i><i>▶</i><i>▶</i></span></span>
+            <span class="n" id="lintT">0s</span>
+            <span class="pg"><i class="on"></i><i class="on"></i><i class="on"></i><i></i><i></i></span>
+          </button>
+          <button type="button" class="st k-halt" data-detail="d06" aria-pressed="true" data-show="halted">
+            <svg class="i wm" aria-hidden="true"><use href="#i-term"/></svg>
+            <span class="nm">终端<span class="bars"><i></i><i></i><i></i></span></span>
+            <span class="ss">已中止</span>
+            <span class="n">—</span>
+            <span class="pg"><i class="on"></i><i class="on"></i><i></i><i></i><i></i></span>
+          </button>
+          <button type="button" class="st k-bash" data-detail="d06" aria-pressed="true" data-show="idle">
+            <svg class="i wm" aria-hidden="true"><use href="#i-term"/></svg>
+            <span class="nm">终端<span class="bars"><i></i><i></i><i></i></span></span>
+            <span class="ss">通过 · 3.8s</span>
+            <span class="n">0<small>问题</small></span>
+            <span class="pg"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i></span>
+          </button>
+        </div>
+        <div class="detail" id="d05" hidden>
+          <div class="hd"><b>#05</b>编辑 · <code>src/legacy/_colors.css</code><span class="r"><span class="plus">+4</span><span class="minus">−4</span></span></div>
+          <div class="diff">
+            <div class="dl del"><span class="ln">12</span><span class="g">−</span><span>  background: #1e6fff;</span></div>
+            <div class="dl add"><span class="ln">12</span><span class="g">+</span><span>  background: var(--accent);</span></div>
+          </div>
+          <div class="note">另 3 处已折叠</div>
+        </div>
+        <div class="detail" id="d06">
+          <div class="hd"><b>#06</b>终端 · <code>npm run lint:css</code>
+            <span class="r" data-show="running">流式输出</span><span class="r" data-show="halted">未完成</span><span class="r" data-show="idle">0 problems</span></div>
+          <pre id="lintOut" data-show="running"></pre>
+          <pre id="haltOut" data-show="halted"></pre>
+          <pre data-show="idle">&gt; stylelint "src/**/*.css"
+
+src/theme/tokens.css       ✓
+src/dashboard/shell.css    ✓
+src/legacy/_colors.css     ✓
+0 problems</pre>
+        </div>
+      </section>
+
+      <div class="haltline" data-show="halted">本轮已被你中止<span class="en">引擎已确认 cancelled</span></div>
+
+      <article class="msg reply" data-show="idle">
+        <header><span class="chip-light">T3RRA</span><span class="en">回复</span><span class="spacer"></span><span class="tag-black" style="font-size:12px;padding:5px 8px">本轮完成</span><time>14:06</time></header>
+        <div class="body prose">
+          <p>完成。9 个颜色收成 <b>7 个令牌</b>，写在 <code>src/theme/tokens.css</code>；dashboard 与 legacy 共 <b>21 处</b>引用已替换，lint 通过。</p>
+          <p>留下的 2 处单次颜色在 <code>shell.css:41</code>、<code>panels.css:7</code>，已加 <code>/* TODO token */</code> 注释。</p>
+        </div>
+      </article>
+
+    </div>
+  </div>
+
+  <!-- ============================ 指令坞 ============================ -->
+  <form class="dock" id="composer" autocomplete="off">
+    <div class="inner">
+      <textarea id="prompt" rows="2" aria-label="指令"
+        data-ph-approval="先处理上面的批准请求（Y / A / N），或在这里补充说明"
+        data-ph-running="运行中。Esc 中止；现在输入的会在本轮结束后发送"
+        data-ph-halted="已中止。继续下达指令"
+        data-ph-idle="下达下一条指令"></textarea>
+      <div class="row">
+        <span class="cnt"><svg class="i" style="width:18px;height:18px"><use href="#i-mail"/></svg>指令 <b>02</b></span>
+        <div class="seg" data-seg role="group" aria-label="模式">
+          <button type="button" aria-pressed="true">构建</button><i aria-hidden="true"></i><button type="button" aria-pressed="false">规划</button>
+        </div>
+        <span class="spacer"></span>
+        <span class="hint">Enter 发送 · Shift+Enter 换行</span>
+        <button type="button" class="btn gray" data-todo="附加文件">附加 @</button>
+        <button type="submit" class="btn blue" data-show="approval halted idle">发送</button>
+        <button type="button" class="btn red" id="haltBtn" data-show="running">中止 <kbd>Esc</kbd></button>
+      </div>
+    </div>
+  </form>
+</main>
+
+<!-- ============================ 右栏 ============================ -->
+<aside class="aside" aria-label="本轮" data-enter>
+  <section>
+    <div class="lvbox">
+      <div class="ringwrap">
+        <div class="ring" aria-hidden="true"></div>
+        <div class="inside"><span class="en">CTX</span><b>38<small>%</small></b></div>
+      </div>
+      <div class="lvinfo">
+        <span class="k">TOKENS</span>
+        <span class="v">76.2K<small>/200K</small></span>
+        <button type="button" class="plus-btn" data-todo="压缩上下文" aria-label="压缩上下文"><svg class="i" style="width:18px;height:18px"><use href="#i-in"/></svg></button>
+      </div>
+    </div>
+    <div class="stats">
+      <div class="stat"><span class="ic"><svg class="i"><use href="#i-in"/></svg></span><span class="v">61.2K<small>输入</small></span></div>
+      <div class="stat"><span class="ic"><svg class="i"><use href="#i-out"/></svg></span><span class="v">14.8K<small>输出</small></span></div>
+      <div class="stat"><span class="ic"><svg class="i"><use href="#i-tool"/></svg></span><span class="v"><span data-show="approval">04</span><span data-show="running halted">05</span><span data-show="idle">06</span><small>工单</small></span></div>
+      <div class="stat"><span class="ic"><svg class="i"><use href="#i-files"/></svg></span><span class="v"><span data-show="approval">05</span><span data-show="running halted idle">06</span><small>文件</small></span></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sechead"><span class="chip-sec">改动</span><span class="en">Changes</span></div>
+    <ul class="changes">
+      <li class="new"><span class="p">src/theme/<b>tokens.css</b></span><span class="d"><span class="plus">+12</span></span></li>
+      <li><span class="p">src/dashboard/<b>shell.css</b></span><span class="d"><span class="plus">+9</span><span class="minus">−9</span></span></li>
+      <li><span class="p">src/dashboard/<b>panels.css</b></span><span class="d"><span class="plus">+4</span><span class="minus">−4</span></span></li>
+      <li><span class="p">src/dashboard/<b>cards.css</b></span><span class="d"><span class="plus">+3</span><span class="minus">−3</span></span></li>
+      <li><span class="p">src/dashboard/<b>nav.css</b></span><span class="d"><span class="plus">+1</span><span class="minus">−1</span></span></li>
+      <li data-show="running halted idle"><span class="p">src/legacy/<b>_colors.css</b></span><span class="d"><span class="plus">+4</span><span class="minus">−4</span></span></li>
+    </ul>
+  </section>
+
+  <section>
+    <div class="sechead"><span class="chip-sec">计划</span><span class="en">
+      <span data-show="approval">3 / 5</span><span data-show="running halted">4 / 5</span><span data-show="idle">5 / 5</span></span></div>
+    <ol class="plan">
+      <li class="done"><span class="ck"><svg class="i"><use href="#i-check"/></svg></span>扫描硬编码颜色</li>
+      <li class="done"><span class="ck"><svg class="i"><use href="#i-check"/></svg></span>归并为主题令牌</li>
+      <li class="done"><span class="ck"><svg class="i"><use href="#i-check"/></svg></span>替换 dashboard 引用</li>
+      <li class="now" data-show="approval"><span class="ck"></span>处理 legacy 引用<i class="dot" aria-label="等你批准"></i></li>
+      <li class="done" data-show="running halted idle"><span class="ck"><svg class="i"><use href="#i-check"/></svg></span>处理 legacy 引用</li>
+      <li class="todo" data-show="approval halted"><span class="ck"></span>运行 lint 校验</li>
+      <li class="now" data-show="running"><span class="ck"></span>运行 lint 校验</li>
+      <li class="done" data-show="idle"><span class="ck"><svg class="i"><use href="#i-check"/></svg></span>运行 lint 校验</li>
+    </ol>
+  </section>
+
+  <div class="engine"><i class="ok" aria-hidden="true"></i><b>OPENCODE</b>已连接<span class="mono">claude-sonnet-5</span></div>
+</aside>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script src="specimen.js"></script>
+<script>
+  // 本页独有：批准卡里的「查看改动」
+  (function () {
+    var btn = document.getElementById("viewDiff");
+    var diff = document.getElementById("askDiff");
+    btn.addEventListener("click", function () {
+      var open = diff.hidden;
+      diff.hidden = !open;
+      btn.setAttribute("aria-expanded", String(open));
+      btn.lastChild.textContent = open ? "收起改动" : "查看改动";
+    });
+  })();
+</script>
+</body>
+</html>

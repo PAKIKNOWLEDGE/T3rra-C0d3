@@ -1,7 +1,7 @@
 /**
  * The event contract — the only shape the UI is allowed to reason about.
  *
- * Re-implemented from the inherited rules (docs/rules-inherited.md §一), not copied:
+ * Re-implemented from the inherited rules (docs/rules.md §一), not copied:
  *  - rule 3: the event stream is the single source of truth, one direction
  *  - rule 2: every event carries `from`, so any block derived from events can declare its
  *    provenance and the union can be machine-checked against the captured traces

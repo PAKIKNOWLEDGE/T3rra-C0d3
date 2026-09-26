@@ -30,7 +30,6 @@ const SERVE_READY_TIMEOUT_MS = 20_000;
 
 interface Client {
   child: ChildProcessWithoutNullStreams | undefined;
-  /** Port passed to `opencode acp --port`; that process serves the same HTTP API (rule 4: a port is not event vocabulary). */
 
   serve: ChildProcess | undefined;
   servePort: number | undefined;

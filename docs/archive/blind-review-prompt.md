@@ -1,6 +1,8 @@
+> **【归档 2026-09-26】** 2026-09-23 工程盲审的提示词。结果与处置已并入 [`docs/status.md`](../status.md)。
+
 # 盲审请求：t3rra-C0d3 工程状态（2026-09-23，历史）
 
-**独立审阅者说明。** 本文件为历史件，保留当时的问题清单；处置见 [`result.md`](./blind-review-result.md) 与现行 [`status.md`](./status.md)。
+**独立审阅者说明。** 本文件为历史件，保留当时的问题清单；处置见 [`result.md`](./blind-review-result.md) 与现行 [`status.md`](./status-2026-09-26.md)。
 
 ## 0. 任务
 
