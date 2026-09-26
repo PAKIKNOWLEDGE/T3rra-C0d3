@@ -19,7 +19,7 @@
 | 引擎怎么接 | ACP stdio（桥）+ 通用 HTTP 透传 `/__t3/http` → 懒起 `opencode serve`（目前只用于 DELETE）。HALT 走 stdio notification，旧的 `/abort` 分流已于 `29f8ea0` 删除。**契约假设的正确性另见 [`engine-contract-audit.md`](./engine-contract-audit.md)** |
 | 工作目录 | **固定** `app/.sandbox`——**没有选真实项目根的 UI**（已知硬伤） |
 | 项目配置 | **app 内无入口**读写 `opencode.json` / `permission.*`（审批为何不问无处解释） |
-| 验收账 | 见 `status.md` §2：全部有代码；#1、#10、#12（视觉第 3 代）待主人目视 |
+| 验收账 | 见 `status.md` §2：全部有代码；#1、#2c、#5–9（新外观下复看）、#10、#12（视觉第 3 代）待主人目视 |
 | 最大结构性空洞 | cwd 选择器、设置/配置面、diff/文件/终端/图片等工作面（HALT 已接） |
 
 ---
@@ -38,7 +38,7 @@ HTTP 通道只接了一单：**DELETE**。diff、revert、pty、file、search �
 
 | 能力 | 状态 | 证据 | 依赖 | 备注 |
 | --- | --- | --- | --- | --- |
-| 显式项目根 / PWD 选择与显示 | **partial** | 【源码】`engine-bridge.ts` `sandboxDir()`；EXPERT `#pCwd` 只读 | 纯 UI + 桥 | cwd **恒为** `app/.sandbox`，用户不能选真目录 |
+| 显式项目根 / PWD 选择与显示 | **partial** | 【源码】`engine-bridge.ts` `sandboxDir()`；左栏「Workspace」行 `#pCwd` 只读 | 纯 UI + 桥 | cwd **恒为** `app/.sandbox`，用户不能选真目录 |
 | `session/new` 传自定义 cwd | **partial** | 【源码】桥 `/spawn` 已收 `cwd`；`main.ts` 用 `facts.cwd` | 暴露 UI | 技术可通，缺选择器 |
 | 多根 / 多项目 | **missing** | 无代码 | 产品决策 + UI | 单一 sandbox |
 | 沙箱 vs 真 cwd | **partial** | 【源码】`sandboxDir()` 注释「never the owner's source」 | — | 刻意沙箱；切真目录 = 上一项 |
@@ -48,7 +48,7 @@ HTTP 通道只接了一单：**DELETE**。diff、revert、pty、file、search �
 
 | 能力 | 状态 | 证据 | 依赖 | 备注 |
 | --- | --- | --- | --- | --- |
-| 列表 / 新建 / 加载 / 删除 | **present** | 验收 #2 主人已过 | ACP + HTTP DELETE | 整行 LOAD、`×` 删 |
+| 列表 / 新建 / 加载 / 删除 | **present** | 验收 #2 主人已过 | ACP + HTTP DELETE | 整块 = 打开、`×` = 删 |
 | 重命名 | **missing** | 无代码；HTTP `PATCH /session/:id` 可改 title【源码】 | 契约/HTTP | title 只读 |
 | fork / resume / close | **missing** | 【源码】上游 `acp/service.ts:295-407` **已实现**；capabilities 已声明 | 纯契约接线 | **回放语义各异**：load 全量 / resume 不回放 / fork 回放 20 条。见 [`engine-contract-audit.md`](./engine-contract-audit.md) F12 |
 | archive | **missing**/【未验】 | 未查到 | — | 引擎面未确认 |
@@ -134,7 +134,7 @@ HTTP 通道只接了一单：**DELETE**。diff、revert、pty、file、search �
 
 ## 3. 建议优先级（子代理 Top 10，**未拍板**）
 
-供主人取舍；**不是已决定计划**：
+供主人取舍；**不是已决定计划**。现行的建议顺序见 [`status.md`](./status.md) §4.5：
 
 1. ~~HALT（验收 #1）~~ **已实现，待目视**：stdio notification  
 2. **项目根 / cwd 选择器**——固定 sandbox = 不能对真项目干活  

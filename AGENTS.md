@@ -11,7 +11,7 @@
 
 ## 二、锁定的决定（详情与日期见 `status.md` §5）
 
-1. **视觉**：ARK 族（明日方舟实机界面），暗色外壳。正本在 `C:\DEV\develop\3NDM1N15T4T0R`，仓库内的权威说明是 [`docs/design.md`](./docs/design.md)。旧 `ark-console` 范式（细线 HUD、空心字、大锚点）已否定。
+1. **视觉**：ARK 族（明日方舟实机界面），暗色外壳。正本是 [PAKIKNOWLEDGE/3NDM1N15T4T0R](https://github.com/PAKIKNOWLEDGE/3NDM1N15T4T0R)（本机 `C:\DEV\develop\3NDM1N15T4T0R`，现行 `5bb6518`），仓库内的权威说明是 [`docs/design.md`](./docs/design.md)。旧 `ark-console` 范式（细线 HUD、空心字、大锚点）已否定。
 2. **引擎**：opencode（ACP）。证据在 [`docs/adapters/opencode-acp.md`](./docs/adapters/opencode-acp.md)、`traces/opencode/`。
 3. **外壳**：Tauri。**Electron 不可接受。**
 4. **中断**：stdio `session/cancel` **notification**（无 `id`）。不走 HTTP abort；**HTTP 2xx 不能当中断生效的证据**（abort 恒返回 `true`）。
@@ -24,7 +24,10 @@
 - 结论标证据等级：【实测】/【源码】/【文档】/【未验】。未验证就写未验证。
 - **契约优先**：对 opencode 的任何接口假设都要有源码或报文证据，不许靠抓包反推。上游源码在 `C:\DEV\develop\opencode`（只读）；新增或修改引擎交互前，先在 `docs/adapters/opencode-acp.md` 登记 path:line。
 - 证据链可复现：入库的每条 `traces/opencode/*.jsonl` 都要能由仓库内的 `spike/` 脚本重跑出来。只出自 TEMP 一次性脚本的 trace 等于没有证据。
-- `*-halt-in-process.jsonl` 出自已丢失的脚本版本，**其 verdict 字符串不作任何解读**，只能用其中的原始字段。
+  **已知例外**（历史遗留，只能当旁证）：
+  - `*-halt-in-process.jsonl`：出自已丢失的脚本版本，**其 verdict 字符串不作任何解读**，只能用其中的原始字段；
+  - `*-bridge-route.jsonl` 与 `probe-http-abort`：测的是已删除的分流结构（审计 F14）；
+  - `openapi-1.17.18.json`、`opencode-config.schema.json`：手工导出，而且版本比现用引擎旧。
 
 **汇报**
 
@@ -55,7 +58,7 @@
 
 | 路径 | 内容 |
 | --- | --- |
-| `app/` | 产品代码。`index.html`（外壳与令牌）、`src/ui/`（渲染）、`src/view/`（派生视图、节奏）、`src/engine/`（ACP 适配、传输）、`src/contract/`（事件契约）、`plugins/`（dev 桥） |
+| `app/` | 产品代码。`index.html`（外壳与令牌）、`ui-manifest.json`（元素清单）、`fonts/`（随包字体）、`src/ui/`（渲染）、`src/view/`（派生视图、节奏）、`src/engine/`（ACP 适配、传输）、`src/contract/`（事件契约）、`plugins/`（dev 桥） |
 | `demo/ark.html` | 金标准样张的仓库内快照（正本在 3NDM1N15T4T0R） |
 | `docs/` | 见下文 §六 |
 | `spike/` + `traces/` | 零成本 ACP 探针及报文证据（不进产物） |
@@ -69,11 +72,21 @@
 
 ```
 npm install
-npm run dev          # → http://localhost:5191/，默认引擎 opencode
+npm run dev          # 默认 http://localhost:5191/；端口被占会自动换（strictPort:false），以终端打印为准
 npm run check:all    # 提交前必须全绿
 ```
 
-引擎解析顺序：`T3RRA_ENGINE_BIN` → `T3RRA_OMP_BIN` → 默认 opencode 优先 → 已知安装位置（`app/src/engine/resolve.ts`）。`T3RRA_ENGINE=omp` 可以退回 omp。
+**机器上要先有**：
+
+- Node（本机实测 v24.15.0；`package.json` 没写 engines）；
+- opencode 1.18.x（本机 1.18.32；v2 有破坏性改动，别升）；
+- 可选：`T3RRA_ENGINE_BIN` 指向可执行文件。
+
+**要真收到回复**：opencode 自己得先能出回复，也就是在终端里跑 `opencode` 能对话（provider 登录或免费模型，见 opencode 文档）。本仓不检查这一点；ACP 的 `authenticate` 能力也证明不了已登录。
+
+**要看到批准卡**：引擎在 `app/.sandbox/` 里干活（桥的 `sandboxDir()`，dev 启动时才创建），审批默认不问。要在该目录的 `opencode.json` 里设 `permission.edit = "ask"`。配置文件放这里才生效是按 opencode 的项目配置规则推断的【未验】。
+
+引擎解析顺序：`T3RRA_ENGINE_BIN` → `T3RRA_OMP_BIN` → 默认 opencode 优先 → 已知安装位置（`app/src/engine/resolve.ts`）。**注意**：默认候选链里 opencode 后面还挂着 omp（`resolve.ts:44`）。本机没有 opencode 时会悄悄跑起 omp，这与「引擎 = opencode」的决定冲突，列在 `status.md` §4。`T3RRA_ENGINE=omp` 可以显式退回 omp。
 
 ## 六、文档系统
 

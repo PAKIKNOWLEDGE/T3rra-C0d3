@@ -7,7 +7,7 @@
 
 | 什么 | 位置 |
 | --- | --- |
-| **规范正本** | `C:\DEV\develop\3NDM1N15T4T0R`：`DESIGN-LANGUAGE.md`（原则、组件表、禁止清单）、`tokens.json`（全部数值）、`examples/ark.html`（金标准样张） |
+| **规范正本** | 仓库 [PAKIKNOWLEDGE/3NDM1N15T4T0R](https://github.com/PAKIKNOWLEDGE/3NDM1N15T4T0R)，本机 checkout 在 `C:\DEV\develop\3NDM1N15T4T0R`。现行版本：提交 `5bb6518`（2.0）。其中 `DESIGN-LANGUAGE.md` 写原则、组件表和禁止清单，`tokens.json` 放令牌，`examples/ark.html` 是金标准样张 |
 | 仓库内快照 | [`demo/ark.html`](../demo/ark.html)，双击打开。只改了字体路径；改设计先改正本再重拷 |
 | 产品实现 | `app/index.html`（令牌、骨架、CSS）+ `app/src/ui/console.ts`（渲染、文案） |
 
@@ -54,12 +54,17 @@
 | 回复卡 | 浅色 chip（引擎报告的 agent 名）+ markdown 正文 | `agent_message_chunk` |
 | 思考卡 | 灰色 chip「思考」，可折叠 | `agent_thought_chunk` |
 | **站点卡（工单）** | 左色条 + 淡水印 = 引擎声明的 `kind`（原文写在卡底）；名 = `title`；状态字；右下 `#NN` 序号；运行中 ▶▶▶ | `tool_call(_update)` |
-| **道具弹窗（批准）** | 黑标签「需要你批准」、「已等待 \| mm:ss」、摘要、请求编号、底部网点纹操作栏（按钮 = 引擎给的选项，`allow_once` 为蓝） | `session/request_permission`；已等待 = 本机从弹出起计时 |
+| **道具弹窗（批准）** | 放在记录流末尾的浅色卡，不是浮层。黑标签「需要你批准」、「已等待 \| mm:ss」、摘要、请求编号、底部网点纹操作栏（按钮 = 引擎给的选项，`allow_once` 为蓝） | `session/request_permission`；已等待 = 本机从弹出起计时 |
 | 结局条 | 「本轮已被你中止」/「本轮失败」/「字节通道已断开」，只在**本轮**出现该事实时画 | `stopReason:"cancelled"`、`prompt.failed`、`link.down` |
 | 相连分段按钮 | 模式（引擎给几个画几个） | `configOptions` 中 `category=mode` |
 | 属性行 | 指令 / 回复 / 工单 / 思考 计数 | 从流里数 |
 | 指令坞 | 多行输入 + 状态灯（相位文字）+ 模式 + 发送 / 中止（同一位置二选一） | `SessionFacts.phase/busy` |
-| 空态 | 「还没有打开会话」+ 蓝色「新建会话」 | 空流；AGENTS §五.4 |
+| 空态 | 「还没有打开会话」+ 蓝色「新建会话」 | 空流；AGENTS §三「空态必须给恢复动作」 |
+| 会话列表头「↻」 | 重新拉会话列表；列表取不到时换成「会话列表取不到」+「重新获取」 | `session/list`、`sessions.unavailable` |
+| 左栏底部 Workspace / Engine bin | 引擎工作目录与可执行文件路径 | 桥的 probe |
+| 右栏「参数」 | model / effort 等非模式选项的下拉框 | `configOptions` |
+| 右栏「节奏」 | 静默判断：判断、静默秒数、基线、样本 n/3、阈值、最近信号（样本不足写「未建立」） | `cadence.ts`（规则 7–9） |
+| 右下引擎框 | 引擎名、连接状态、当前模型、「重启」按钮（杀进程重开） | `initialize` 响应、传输状态 |
 
 **样张有、产品故意不画的**（画了就是造事实）：
 
@@ -75,7 +80,7 @@
 
 ## 5. 令牌与字体
 
-- **数值只取 `tokens.json`（ARK 部分）**，不新造色。`app/index.html` 的 `:root` 与正本的颜色令牌逐项一致（2026-09-26 脚本比对【实测】）。只有两处有意差异：
+- **数值只取正本**：全局令牌看 `tokens.json`（ARK 部分）；组件内部的字面色值（例如批准卡的 `#dfe0de`、`#c8c9c7`）以 `examples/ark.html` 为准，照抄，不新造色。`app/index.html` 的 `:root` 与正本的颜色令牌逐项一致（2026-09-26 脚本比对【实测】）。只有两处有意差异：
   - 多一个 `--gray-k`：未知 kind 工单用的中性灰，正本没有这一项；
   - `--f-sans` 少了 `"HMS"` 别名：产品里鸿蒙字体以本名注册，是同一份文件。
 - **颜色只做一件事**：
@@ -108,7 +113,12 @@
 
 1. 先对照正本：[`demo/ark.html`](../demo/ark.html) 与 `DESIGN-LANGUAGE.md` §5.2 的组件表。
 2. 想加一个读数，先问它能追到哪条事件。追不到就去 §4 的「不画」表登记，不要硬画。
-3. 改 `app/index.html` 与 `app/src/ui/console.ts`。不动 `transport.ts` / `acp.ts` / `contract/events.ts` / `view/derive.ts`，除非有契约层面的理由（`rules.md` §五）。
+3. 纯视觉改动只改 `app/index.html` 与 `app/src/ui/console.ts`。
+   要**新增数据**（例如上下文圆环）就是契约变更，按 `rules.md` §五走：
+   1. 先在 `docs/adapters/opencode-acp.md` 登记源码与报文证据；
+   2. 再改 `app/src/contract/events.ts`（加事件）和 `app/src/engine/acp.ts`（把它从故意忽略的名单 `acp.ts:87` 里移出来，`usage_update` 目前就在那份名单上）；
+   3. 然后改 `app/src/view/derive.ts`（加进 `ConsoleView` 与 `from` 溯源）；
+   4. 最后让 `test/acp-coverage.test.ts` 保持通过。
 4. `npm run check:all` 全绿。
 5. 交付时给出 `npm run dev` → `http://localhost:5191/` 和 3–5 条「看什么」，写进 `status.md` 的验收表。
 
