@@ -17,7 +17,7 @@
      导航条 ‹|⌂        记录 / 事件 两个视图
      ⓘ                 诊断（传输事实）开关
      页名              RECORD 作业记录 / EVENTS 事件日志
-     资源条            工单数、会话用时（上下文用量没有数据源，不画）
+     资源条            工单数、会话用时、上下文用量（无报文时明确显示未报告）
      蓝色大块          新建会话
      会话块            编号 + 标题 + 更新时间；当前 = 浅色块；等你批准 = 橙角标
      指令 / 回复       黑底「指令 NN」名牌 / 浅色引擎名 chip
@@ -129,11 +129,12 @@ kbd { font: 700 11px/1 var(--f-num); padding: 3px 5px; border: 1px solid current
 .top .spacer { flex: 1; }
 
 /* 资源条：彩色图标方块 + 大号数字。只放真实计量。 */
-.res { display: flex; align-items: stretch; height: 42px; background: linear-gradient(90deg, rgba(0, 0, 0, .55), rgba(0, 0, 0, .3)); flex: none; }
+.resbar { display: flex; align-items: center; gap: 6px; flex: none; min-width: 0; }
+.res { display: flex; align-items: stretch; height: 42px; background: linear-gradient(90deg, rgba(0, 0, 0, .55), rgba(0, 0, 0, .3)); flex: none; min-width: 0; }
 .res .ic { width: 42px; display: grid; place-items: center; color: #151515; }
 .res .ic svg.i { width: 24px; height: 24px; stroke-width: 2.4; }
-.res .v { display: flex; align-items: baseline; gap: 6px; padding: 0 16px 0 12px; font: 700 27px/42px var(--f-num); font-variant-numeric: tabular-nums; }
-.res .v small { font: 700 12px/1 var(--f-sans); color: var(--ink-3); letter-spacing: .06em; }
+.res .v { display: flex; align-items: baseline; gap: 6px; height: 42px; min-width: 0; padding: 0 16px 0 12px; font: 700 27px/42px var(--f-num); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.res .v small { font: 700 12px/1 var(--f-sans); color: var(--ink-3); letter-spacing: .06em; align-self: flex-end; padding-bottom: 8px; }
 .res.orders .ic { background: var(--yellow); }
 .res.time .ic { background: var(--cyan); }
 .res.context .ic { background: var(--blue); color: #fff; }
@@ -511,8 +512,20 @@ html[data-link="down"] .engine .ok { background: var(--red); }
 @keyframes glowIn { from { opacity: .55; filter: brightness(.94); } to { opacity: 1; filter: brightness(1); } }
 @keyframes hazard { from { background-position: 0 0; } to { background-position: 22px 0; } }
 .top, .main, .side, .aside { animation: glowIn 340ms var(--ease) backwards; }
+.top > * { animation: enter 360ms var(--ease) backwards; }
+.top > :nth-child(2) { animation-delay: 36ms; }
+.top > :nth-child(3) { animation-delay: 72ms; }
+.top > .resbar { animation-delay: 108ms; }
 .side, .aside { animation-name: enter; animation-duration: 380ms; }
 .aside { animation-delay: 80ms; }
+.stream.session-swap > *, .sessions.session-swap > * { animation: enter 360ms var(--ease) backwards; animation-delay: calc(var(--i, 0) * 42ms); }
+.sessions.session-swap > :nth-child(2), .stream.session-swap > :nth-child(2) { --i: 1; }
+.sessions.session-swap > :nth-child(3), .stream.session-swap > :nth-child(3) { --i: 2; }
+.sessions.session-swap > :nth-child(4), .stream.session-swap > :nth-child(4) { --i: 3; }
+.sessions.session-swap > :nth-child(5), .stream.session-swap > :nth-child(5) { --i: 4; }
+.sessions.session-swap > :nth-child(6), .stream.session-swap > :nth-child(6) { --i: 5; }
+.sessions.session-swap > :nth-child(7), .stream.session-swap > :nth-child(7) { --i: 6; }
+.sessions.session-swap > :nth-child(8), .stream.session-swap > :nth-child(8) { --i: 7; }
 html[data-ask="true"] .ask { animation: enter 260ms var(--ease) both; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
@@ -571,9 +584,11 @@ html[data-ask="true"] .ask { animation: enter 260ms var(--ease) both; }
 
   <div class="spacer"></div>
 
-  <div class="res orders"><span class="ic"><svg class="i"><use href="#i-tool"/></svg></span><span class="v"><span id="resOrders">00</span><small>工单</small></span></div>
-  <div class="res time"><span class="ic"><svg class="i"><use href="#i-clock"/></svg></span><span class="v"><span id="resTime">--:--</span><small>会话用时</small></span></div>
-  <div class="res context" aria-label="上下文用量"><span class="ic ring" id="resContextRing"><span id="resContextPct">--</span></span><span class="v"><span id="resContextUsed">未报告</span><small>上下文</small></span></div>
+  <div class="resbar" aria-label="资源条">
+    <div class="res orders"><span class="ic"><svg class="i"><use href="#i-tool"/></svg></span><span class="v"><span id="resOrders">00</span><small>工单</small></span></div>
+    <div class="res time"><span class="ic"><svg class="i"><use href="#i-clock"/></svg></span><span class="v"><span id="resTime">--:--</span><small>会话用时</small></span></div>
+    <div class="res context" aria-label="上下文用量"><span class="ic ring" id="resContextRing"><span id="resContextPct">--</span></span><span class="v"><span id="resContextUsed">未报告</span><small>上下文</small></span></div>
+  </div>
 </header>
 
 <!-- ============================ 左栏 ============================ -->

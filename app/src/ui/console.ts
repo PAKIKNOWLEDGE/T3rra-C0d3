@@ -206,6 +206,23 @@ export const mountConsole = (): ConsoleHandles => {
   let permissionSelectHandler: (requestId: string, optionId: string) => void = () => {};
   let optionSignature = "";
   let sessionSignature = "";
+  let renderedStreamSessionId: string | undefined;
+  let renderedListSessionId: string | undefined;
+  const sessionSwapTimers = new Map<HTMLElement, number>();
+
+  const animateSessionSwap = (target: HTMLElement): void => {
+    target.classList.remove("session-swap");
+    const previous = sessionSwapTimers.get(target);
+    if (previous !== undefined) window.clearTimeout(previous);
+    window.requestAnimationFrame(() => {
+      target.classList.add("session-swap");
+      const timer = window.setTimeout(() => {
+        target.classList.remove("session-swap");
+        sessionSwapTimers.delete(target);
+      }, 520);
+      sessionSwapTimers.set(target, timer);
+    });
+  };
   let permissionSignature = "";
   let haltHandler: (() => void) | undefined;
   let facts: SessionFacts = {};
@@ -503,6 +520,7 @@ export const mountConsole = (): ConsoleHandles => {
 
   const renderStream = (view: ConsoleView): void => {
     const pinned = processView.scrollTop + processView.clientHeight >= processView.scrollHeight - 24;
+    const sessionChanged = renderedStreamSessionId !== undefined && renderedStreamSessionId !== view.sessionId;
     stream.replaceChildren();
 
     if (view.stream.length === 0) {
@@ -540,6 +558,10 @@ export const mountConsole = (): ConsoleHandles => {
       line.append(el("span", "en", `${view.linkDown} · 按右下「重启」恢复`));
       stream.append(line);
     }
+    if (sessionChanged) {
+      animateSessionSwap(stream);
+    }
+    renderedStreamSessionId = view.sessionId;
     if (pinned) processView.scrollTop = processView.scrollHeight;
   };
 
@@ -626,6 +648,7 @@ export const mountConsole = (): ConsoleHandles => {
     ].join("#");
     if (signature === sessionSignature) return;
     sessionSignature = signature;
+    const sessionChanged = renderedListSessionId !== undefined && renderedListSessionId !== view.sessionId;
 
     sessionsCount.textContent = pad2(view.sessions.length);
     sessionsList.replaceChildren();
@@ -643,6 +666,10 @@ export const mountConsole = (): ConsoleHandles => {
       retry.addEventListener("click", () => sessionsRefreshHandler());
       failed.append(retry);
       sessionsList.append(failed, ...numbered());
+      if (sessionChanged) {
+        animateSessionSwap(sessionsList);
+      }
+      renderedListSessionId = view.sessionId;
       return;
     }
     if (view.sessions.length === 0) {
@@ -655,9 +682,17 @@ export const mountConsole = (): ConsoleHandles => {
       create.addEventListener("click", () => sessionCreateHandler());
       empty.append(create);
       sessionsList.append(empty);
+      if (sessionChanged) {
+        animateSessionSwap(sessionsList);
+      }
+      renderedListSessionId = view.sessionId;
       return;
     }
     sessionsList.append(...numbered());
+    if (sessionChanged) {
+      animateSessionSwap(sessionsList);
+    }
+    renderedListSessionId = view.sessionId;
   };
 
   const renderWait = (): void => {
