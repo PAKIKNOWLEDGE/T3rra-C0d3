@@ -4,7 +4,7 @@ T3rra-C0d3-Rhodes 是一个 Windows 优先的桌面 coding-agent 控制台：用
 
 它适合希望在本机目录中使用 coding agent、同时需要可见状态、审批边界和可恢复会话的人。Rhodes 不替代引擎，也不伪装引擎结果；回复、思考、工单、审批、错误和恢复状态都来自真实运行链路。
 
-![T3rra-C0d3-Rhodes 主界面](docs/assets/rhodes-overview.png)
+![T3rra-C0d3-Rhodes 主界面](docs/assets/rhodes-overview.webp)
 
 ## 核心能力
 
@@ -15,9 +15,9 @@ T3rra-C0d3-Rhodes 是一个 Windows 优先的桌面 coding-agent 控制台：用
 - 支持批准、拒绝和中止；错误会显示为错误，不会伪装成空结果。
 - 支持模式、模型和 effort 切换；引擎提供 usage 时显示上下文用量。
 
-![新会话状态](docs/assets/rhodes-session.png)
+![新会话状态](docs/assets/rhodes-session.webp)
 
-![事件流](docs/assets/rhodes-events.png)
+![事件流](docs/assets/rhodes-events.webp)
 
 ## 技术路线
 
