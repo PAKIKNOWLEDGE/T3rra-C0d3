@@ -94,7 +94,8 @@
 - **ACP 初始化可在重连后再次握手**【源码 2026-09-26】：`packages/opencode/src/acp/service.ts:94-113` 的 `initialize` 每次返回静态协议能力和 `agentInfo`，不创建 session、不改变当前 turn。本仓在浏览器刷新后复用同一个 ACP 子进程并重新发送 `initialize`；这只恢复连接，不伪造新的会话或回合。
 - **`session/set_config_option { sessionId, configId, value }` 可用**，响应带回**完整 `configOptions`**——界面照响应重渲染，不自维护清单。
 - **`session/new` 响应不含 `modes`/`models` 字段**（`acp/service.ts:199-206`）：是**字段不存在**，不是 `null`。模式在 configOptions 的 `mode`。`load`/`resume`/`fork` 同样不返回。
-- **`session/resume` / `session/fork` / `session/close` / `session/set_mode` / `session/set_model` 均已实现但本仓从未调用**【源码】。回放语义**不同**：`load` = 全量回放；`resume` = **完全不回放**（只读最近 20 条恢复 model/variant/mode）；`fork` = 只回放 20 条。
+- **`session/resume` / `session/fork` / `session/close` / `session/set_mode` / `session/set_model` 均已实现**【源码】。回放语义**不同**：`load` = 全量回放；`resume` = **完全不回放**（只读最近 20 条恢复 model/variant/mode）；`fork` = 只回放 20 条。当前仓已开始接线，具体路径见下一条。
+- 本仓接线时沿用上游参数形状：`session/resume` 在 `packages/opencode/src/acp/service.ts:295-347` 使用 `{ cwd, sessionId, mcpServers? }`，返回 `configOptions` 但不返回 `sessionId`；`session/fork` 在 `service.ts:362-416` 使用 `{ cwd, sessionId, mcpServers? }`，返回新 `sessionId` 与 `configOptions`；`session/set_mode` / `session/set_model` 在 `service.ts:468-498` 分别使用 `{ sessionId, modeId }` / `{ sessionId, modelId }`，响应为空对象（模型切换另发 `config_option_update`）。
 - **`session/cancel` 见上方更正条目**（notification 存在；请求形态 -32601 是实验方法错误）。
 
 ## 四、有损列（相对 omp）

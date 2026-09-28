@@ -507,6 +507,11 @@ const handleLine = (line: string): void => {
         ui.setPlaceholder("打开失败 · 新建会话，或再发一次");
         patch({ phase: "就绪", phaseNote: `打开失败 · ${known === "session/load" ? "换一个会话，或新建" : "再新建一次"}` });
       }
+      if (known === "session/resume" || known === "session/fork" || known === "session/set_mode" || known === "session/set_model") {
+        ui.setCommandEnabled(true);
+        ui.setPlaceholder("下达指令");
+        patch({ phase: "就绪", phaseNote: `${known} 失败 · 会话仍可用` });
+      }
       if (known === "session/close" && pendingDeletion?.sessionId === response.requestedSessionId) {
         pendingDeletion = undefined;
         patch({ phase: "就绪", phaseNote: "关闭失败 · 会话仍保留" });
@@ -554,6 +559,10 @@ const handshake = async (preferredCwd?: string): Promise<void> => {
   send("initialize", { protocolVersion: 1, clientInfo: { name: "t3rra-console", version: "0.2.0" }, clientCapabilities: {} });
   await new Promise((done) => setTimeout(done, 600));
   // Do NOT session/new here — opening the page must not create a junk session.
+  const resumeCwd = preferredCwd ?? probe.cwd;
+  if (!recoveryPending && initialRecovery.sessionId !== undefined && resumeCwd !== undefined && resumeCwd !== "NOT STATED") {
+    send("session/resume", { cwd: resumeCwd, sessionId: initialRecovery.sessionId, mcpServers: [] });
+  }
   refreshSessions();
   syncPermissionPolicy(preferredCwd ?? facts.cwd);
   ui.setLink("ok");
@@ -742,6 +751,19 @@ ui.onSessionLoad((sessionId, cwd) => {
   });
 });
 
+ui.onSessionFork((sessionId, cwd) => {
+  if (!engineReady("FORK")) return;
+  const forkCwd = cwd === "" ? facts.cwd : cwd;
+  if (forkCwd === undefined || forkCwd === "" || forkCwd === "NOT STATED") {
+    patch({ lastError: "FORK needs a known session directory", phaseNote: "会话目录未知 · 先选择工作目录" });
+    return;
+  }
+  patch({ phase: "分叉中", phaseNote: `正在从会话 ${sessionId.slice(0, 12)}… 分叉`, busy: false, topic: undefined });
+  ui.setCommandEnabled(false);
+  ui.setPlaceholder("正在分叉会话");
+  send("session/fork", { sessionId, cwd: forkCwd, mcpServers: [] });
+});
+
 ui.onSessionDelete((sessionId) => {
   if (!engineReady("DELETE")) return;
   if (pendingDeletion !== undefined) {
@@ -927,7 +949,13 @@ ui.onOptionChange((optionId, value) => {
   ui.render(view);
   // Rule 9: a different model has a different cadence, so its samples are not evidence.
   if (optionId === "model") cadence = discardSamples(cadence);
-  send("session/set_config_option", { sessionId: view.sessionId, configId: optionId, value });
+  if (optionId === "mode") {
+    send("session/set_mode", { sessionId: view.sessionId, modeId: value });
+  } else if (optionId === "model") {
+    send("session/set_model", { sessionId: view.sessionId, modelId: value });
+  } else {
+    send("session/set_config_option", { sessionId: view.sessionId, configId: optionId, value });
+  }
 });
 
 // The clock is the only thing allowed to change the anchor while nothing is streaming.

@@ -202,6 +202,15 @@ kbd { font: 700 11px/1 var(--f-num); padding: 3px 5px; border: 1px solid current
   font: 16px/1 var(--f-mono); color: var(--ink-3);
   transition: color 150ms var(--ease), background-color 150ms var(--ease);
 }
+.sess-actions { display: inline-flex; align-items: center; gap: 4px; }
+.sess .fork {
+  appearance: none; border: 1px solid transparent; background: none; cursor: pointer;
+  width: 26px; height: 26px; padding: 0; display: grid; place-items: center;
+  font: 16px/1 var(--f-mono); color: var(--ink-3);
+  transition: color 150ms var(--ease), background-color 150ms var(--ease), transform 150ms var(--ease);
+}
+.sess[aria-current="true"] .fork { color: #5e6064; }
+.sess .fork:hover { color: #fff; background: var(--blue); transform: translateY(-1px); }
 .sess[aria-current="true"] .del { color: #5e6064; }
 .sess .del:hover { color: #fff; background: var(--red); }
 .pill-dark { display: inline-flex; align-items: center; gap: 6px; background: #161718; color: #e8e8e8; padding: 2px 8px; border-radius: 3px; font-size: 12px; line-height: 1.5; white-space: nowrap; }

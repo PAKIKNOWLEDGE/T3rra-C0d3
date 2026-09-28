@@ -38,6 +38,28 @@ describe("response mapping", () => {
     expect(reduceAll(mapping.events).sessionId).toBe("ses_loaded");
   });
 
+  it("correlates resume without inventing a new session id", () => {
+    const mapping = mapResponse("session/resume", { configOptions: liveOptions }, "ses_resume");
+    expect(mapping.recognised).toBe(true);
+    expect(mapping.sessionId).toBe("ses_resume");
+    expect(mapping.events).toEqual([
+      expect.objectContaining({ kind: "session.opened", sessionId: "ses_resume" }),
+      expect.objectContaining({ kind: "options.updated" }),
+    ]);
+  });
+
+  it("maps fork response as a new opened session", () => {
+    const mapping = mapResponse("session/fork", { sessionId: "ses_fork", configOptions: liveOptions }, "ses_parent");
+    expect(mapping.recognised).toBe(true);
+    expect(mapping.sessionId).toBe("ses_fork");
+    expect(reduceAll(mapping.events).sessionId).toBe("ses_fork");
+  });
+
+  it("recognises direct mode and model responses", () => {
+    expect(mapResponse("session/set_mode", {}).recognised).toBe(true);
+    expect(mapResponse("session/set_model", {}).recognised).toBe(true);
+  });
+
   it("does not invent a session id for session/load without request context", () => {
     const mapping = mapResponse("session/load", { configOptions: liveOptions });
     expect(mapping.sessionId).toBeUndefined();

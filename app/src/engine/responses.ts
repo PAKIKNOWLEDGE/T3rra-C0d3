@@ -81,13 +81,13 @@ export const mapResponse = (method: string, result: unknown, requestedSessionId?
     return { events, sessionId, agentName, recognised: true };
   }
 
-  if (method === "session/new" || method === "session/load") {
+  if (method === "session/new" || method === "session/load" || method === "session/resume" || method === "session/fork") {
     const payload = result as { sessionId?: string; configOptions?: readonly unknown[] } | null;
     const returnedSessionId = typeof payload?.sessionId === "string" ? payload.sessionId : undefined;
     // `session/load` responses in the real ACP trace carry configOptions but omit sessionId.
     // The request is the authoritative correlation for that response, so use the requested id
-    // only for load; session/new must still prove its id in the response.
-    sessionId = returnedSessionId ?? (method === "session/load" ? requestedSessionId : undefined);
+    // only for load/resume; session/new and session/fork must prove their id in the response.
+    sessionId = returnedSessionId ?? (method === "session/load" || method === "session/resume" ? requestedSessionId : undefined);
     if (sessionId !== undefined) {
       events.push({ kind: "session.opened", from: { method: `${method}.response`, variant: undefined }, sessionId });
     }
@@ -111,6 +111,10 @@ export const mapResponse = (method: string, result: unknown, requestedSessionId?
   if (method === "session/set_config_option") {
     const payload = result as { configOptions?: readonly unknown[] } | null;
     if (payload?.configOptions !== undefined) events.push(optionsEventOf(payload.configOptions));
+    return { events, sessionId, agentName, recognised: true };
+  }
+
+  if (method === "session/set_mode" || method === "session/set_model") {
     return { events, sessionId, agentName, recognised: true };
   }
 

@@ -145,6 +145,10 @@
       "wired": true,
       "role": "renderer-created session delete action"
     },
+    "fork": {
+      "wired": true,
+      "role": "renderer-created session fork action"
+    },
     "mini": {
       "wired": true,
       "role": "renderer-created recovery or create action"

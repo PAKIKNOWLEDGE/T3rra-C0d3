@@ -50,7 +50,7 @@ HTTP 通道只接了一单：**DELETE**。diff、revert、pty、file、search �
 | --- | --- | --- | --- | --- |
 | 列表 / 新建 / 加载 / 删除 | **present** | 验收 #2 主人已过 | ACP + HTTP DELETE | 整块 = 打开、`×` = 删 |
 | 重命名 | **missing** | 无代码；HTTP `PATCH /session/:id` 可改 title【源码】 | 契约/HTTP | title 只读 |
-| fork / resume / close | **missing** | 【源码】上游 `acp/service.ts:295-407` **已实现**；capabilities 已声明 | 纯契约接线 | **回放语义各异**：load 全量 / resume 不回放 / fork 回放 20 条。见 [`engine-contract-audit.md`](./engine-contract-audit.md) F12 |
+| fork / resume / close | **partial** | 【源码】上游 `acp/service.ts:295-407` 已实现；本仓已接 `resume`、`fork`、`close`，其中 `resume` 用于刷新空闲会话恢复引擎态，`fork` 由会话行 ↗ 触发 | F12 第一段已接线，待主人目视验收 | **回放语义各异**：load 全量 / resume 不回放 / fork 回放 20 条。见 [`engine-contract-audit.md`](./engine-contract-audit.md) F12 |
 | archive | **missing**/【未验】 | 未查到 | — | 引擎面未确认 |
 | 元数据 title/cwd/updatedAt | **present** | contract `SessionSummary` | ACP list | 四字段 |
 | 消息数/轮数 | **N/A** | 【实测】list 无消息数；规则禁止造数 | — | — |

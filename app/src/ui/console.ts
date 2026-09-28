@@ -66,6 +66,7 @@ export interface ConsoleHandles {
   setCwdInput(value: string): void;
   setPermissionPolicy(value: "default" | "ask" | "allow" | "deny"): void;
   onSessionLoad(handler: (sessionId: string, cwd: string) => void): void;
+  onSessionFork(handler: (sessionId: string, cwd: string) => void): void;
   onSessionDelete(handler: (sessionId: string) => void): void;
   onPermissionSelect(handler: (requestId: string, optionId: string) => void): void;
   setView(view: "process" | "events"): void;
@@ -198,6 +199,7 @@ export const mountConsole = (): ConsoleHandles => {
 
   let optionHandler: (optionId: string, value: string) => void = () => {};
   let sessionLoadHandler: (sessionId: string, cwd: string) => void = () => {};
+  let sessionForkHandler: (sessionId: string, cwd: string) => void = () => {};
   let sessionDeleteHandler: (sessionId: string) => void = () => {};
   /** Set by `onSessionCreate`; the empty states' CREATE buttons reuse this one action. */
   let sessionCreateHandler: () => void = () => {};
@@ -613,6 +615,14 @@ export const mountConsole = (): ConsoleHandles => {
     }
     meta.append(el("span", "d", item.updatedAt === "" ? "时间未告知" : item.updatedAt));
 
+    const fork = el("button", "fork", "↗");
+    fork.type = "button";
+    fork.setAttribute("aria-label", `从会话分叉 ${item.sessionId}`);
+    fork.addEventListener("click", (event) => {
+      event.stopPropagation();
+      sessionForkHandler(item.sessionId, item.cwd);
+    });
+
     const del = el("button", "del", "×");
     del.type = "button";
     del.setAttribute("aria-label", `删除会话 ${item.sessionId}`);
@@ -634,7 +644,9 @@ export const mountConsole = (): ConsoleHandles => {
       }
     });
 
-    row.append(el("span", "no", pad2(ordinal)), el("span", "t", title), del, meta);
+    const actions = el("span", "sess-actions");
+    actions.append(fork, del);
+    row.append(el("span", "no", pad2(ordinal)), el("span", "t", title), actions, meta);
     return row;
   };
 
@@ -883,6 +895,9 @@ export const mountConsole = (): ConsoleHandles => {
     },
     onSessionLoad(handler): void {
       sessionLoadHandler = handler;
+    },
+    onSessionFork(handler): void {
+      sessionForkHandler = handler;
     },
     onSessionDelete(handler): void {
       sessionDeleteHandler = handler;
