@@ -50,7 +50,7 @@ HTTP 通道只接了一单：**DELETE**。diff、revert、pty、file、search �
 | --- | --- | --- | --- | --- |
 | 列表 / 新建 / 加载 / 删除 | **present** | 验收 #2 主人已过 | ACP + HTTP DELETE | 整块 = 打开、`×` = 删 |
 | 重命名 | **missing** | 无代码；HTTP `PATCH /session/:id` 可改 title【源码】 | 契约/HTTP | title 只读 |
-| fork / resume / close | **partial** | 【源码】上游 `acp/service.ts:295-407` 已实现；本仓已接 `resume`、`fork`、`close`，其中 `resume` 用于刷新空闲会话恢复引擎态，`fork` 由会话行 ↗ 触发 | F12 第一段已接线，待主人目视验收 | **回放语义各异**：load 全量 / resume 不回放 / fork 回放 20 条。见 [`engine-contract-audit.md`](./engine-contract-audit.md) F12 |
+| fork / resume / close | **present** | 【源码】上游 `acp/service.ts:295-407` 已实现；本仓已接 `resume`、`fork`、`close`，其中 `resume` 用于刷新空闲会话恢复引擎态，`fork` 由会话行 ↗ 触发；主人已验收 | F12 | **回放语义各异**：load 全量 / resume 不回放 / fork 回放 20 条。见 [`engine-contract-audit.md`](./engine-contract-audit.md) F12 |
 | archive | **missing**/【未验】 | 未查到 | — | 引擎面未确认 |
 | 元数据 title/cwd/updatedAt | **present** | contract `SessionSummary` | ACP list | 四字段 |
 | 消息数/轮数 | **N/A** | 【实测】list 无消息数；规则禁止造数 | — | — |
@@ -88,10 +88,10 @@ HTTP 通道只接了一单：**DELETE**。diff、revert、pty、file、search �
 
 | 能力 | 状态 | 证据 | 依赖 | 备注 |
 | --- | --- | --- | --- | --- |
-| 文件树 / 查看器 | **missing** | 无；OpenAPI 有 file 端点 | HTTP fs + UI | — |
-| diff / revert | **missing** | OpenAPI 有；check-app 禁词 DIFF/REVERT | HTTP + UI | — |
-| 终端 PTY | **missing** | OpenAPI 有 | WS + UI | 禁词 PTY |
-| 搜索 / grep 面 | **missing** | OpenAPI 有 | HTTP + UI | — |
+| 文件树 / 查看器 | **missing** | 无；OpenAPI 有 file 端点 | HTTP fs + UI | status §4.6 未来更新计划 |
+| diff / revert | **missing** | OpenAPI 有；check-app 禁词 DIFF/REVERT | HTTP + UI | status §4.6 未来更新计划 |
+| 终端 PTY | **missing** | OpenAPI 有 | WS + UI | status §4.6 未来更新计划 |
+| 搜索 / grep 面 | **missing** | OpenAPI 有 | HTTP + UI | status §4.6 未来更新计划 |
 | todo/plan 一等视图 | **N/A** | 规则 5；禁词 TODO | — | 引擎有、契约拒 |
 
 ### G. 传输 / 外壳
@@ -108,16 +108,16 @@ HTTP 通道只接了一单：**DELETE**。diff、revert、pty、file、search �
 | 能力 | 状态 | 证据 | 依赖 | 备注 |
 | --- | --- | --- | --- | --- |
 | 引擎 image | **present**【实测】 | `promptCapabilities.image: true` | — | 本地附件 |
-| 粘贴 / 附件 UI | **missing** | status 开放项 | 网页 paste/File | Tauri 是否必须【未验】 |
-| prompt 带图 | **missing** | `main.ts` 只发 `[{type:"text"}]` | 发送路径加 image 块 | — |
+| 粘贴 / 附件 UI | **missing** | status §4.6 未来更新计划 | 网页 paste/File | Tauri 是否必须【未验】 |
+| prompt 带图 | **missing** | `main.ts` 只发 `[{type:"text"}]` | 发送路径加 image 块 | status §4.6 未来更新计划 |
 
 ### I. 多会话
 
 | 能力 | 状态 | 证据 | 依赖 | 备注 |
 | --- | --- | --- | --- | --- |
 | 列表存多条 | **present** | #2 | ACP list | — |
-| 同时跑多个 / 后台会话 | **missing** | 单 transport、单 `view.sessionId`、全局 busy | 架构按会话分账 | status P1 曾列「多会话」 |
-| 列表显示运行中 | **missing** | list 无状态字段 | 事件路由到非活动会话 | — |
+| 同时跑多个 / 后台会话 | **partial** | 单 transport、单 `view.sessionId`、全局 busy；后台会话状态尚未按会话分账 | 架构按会话分账 | status §4.6 未来更新计划 |
+| 列表显示运行中 | **missing** | list 无状态字段 | 事件路由到非活动会话 | status §4.6 未来更新计划 |
 
 ### J. 操作流
 
@@ -125,7 +125,7 @@ HTTP 通道只接了一单：**DELETE**。diff、revert、pty、file、search �
 | --- | --- | --- | --- | --- |
 | 设置面板 / 配置编辑器 | **missing** | 无 | UI + 文件 | 解锁「为何不问我」 |
 | 空态可恢复 | **present** | 列表空态与记录空态都有「新建会话」、placeholder 链 | — | AGENTS §三 |
-| 导出会话 | **missing** | eventLog/stream 在内存 | 本地导出 | 低成本 |
+| 导出会话 | **missing** | eventLog/stream 在内存 | 本地导出 | status §4.6 未来更新计划 |
 | Esc = HALT | **present**（#1） | 输入框内 Esc 走同一 `#halt` 路径（console.ts） | — | 「中止」只在运行中出现，与「发送」共用一个位置 |
 | 可访问性 | **partial** | aria-*、focus、reduced-motion | — | 终判归主人目视 |
 | 最近错误 / 失败恢复输入框 | **present** | AGENTS §三 | — | 最近错误在「诊断」分节（ⓘ） |
@@ -134,19 +134,19 @@ HTTP 通道只接了一单：**DELETE**。diff、revert、pty、file、search �
 
 ## 3. 建议优先级（子代理 Top 10，**未拍板**）
 
-供主人取舍；**不是已决定计划**。现行的建议顺序见 [`status.md`](./status.md) §4.5：
+供主人取舍；**不是已决定计划**。现行状态与未来更新计划见 [`status.md`](./status.md) §4.5–§4.6：
 
 1. ~~HALT（验收 #1）~~ **已实现，待目视**：stdio notification  
 2. **permission 配置可见/可设**——否则 #10 永看不到真请求
-3. 多会话并发 / 后台跑
-4. fork / resume / close 接线（ACP 已声明）
-5. 审批时 diff
-6. 粘贴图片
-7. 导出会话
+3. 多会话并发 / 后台跑（未来更新）
+4. fork / resume / close 接线（已完成）
+5. 审批时 diff（未来更新）
+6. 粘贴图片（未来更新）
+7. 导出会话（未来更新）
 8. 工具结果体（规则 23 先改 adapters）
 9. 重试 / 编辑末条（引擎机制先【未验】）
 
-并列：设置面板、PTY、文件浏览器、搜索——依赖重，建议 1–5 之后。
+并列：设置面板、PTY、文件浏览器、搜索——依赖重，统一放入未来更新计划。
 
 ---
 
