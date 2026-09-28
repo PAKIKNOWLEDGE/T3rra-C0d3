@@ -1,36 +1,19 @@
 # 能力全图（coding-agent 前端对照）
 
-**日期**：2026-09-24 盘点；**2026-09-26 修正**了 HALT、HTTP 分流、视觉三处过时描述。来源：对本仓 `app/` + `docs/` + `traces/` 的只读盘点（子代理），主总线整理入库。  
-**用途**：空上下文接手时，除了 [`status.md`](./status.md) 验收账，还能一眼看到「完整 coding agent 应有什么 / 本仓有没有」。  
-**契约正确性**另见 [`engine-contract-audit.md`](./engine-contract-audit.md)——本文件回答「功能有没有」，审计回答「对引擎的假设对不对」。**两者与 status 冲突时，以 status 为准；审计可推翻本文件的证据等级标注。**
+**整理：2026-09-28。** 基于已记录的实现与主人验收同步档位；本轮没有重新做代码审计。本文回答“能力有没有”，[status.md](./status.md) 回答“验收、遗留、现在做什么”，[审计](./engine-contract-audit.md)与 [ACP 映射](./adapters/opencode-acp.md)保留证据。
 
-**证据等级**见 [`README.md`](./README.md)：【实测】/【源码】/【文档】/【未验】。  
-**状态**：`present` = 有；`partial` = 半截；`missing` = 缺；`N/A` = 本产品规则上不接。
-
-**与验收清单的关系**：`status.md` §2 是**主人验收账**（交付标准）。本文件是**能力全景**（产品完整度地图）。两者冲突时，验收账优先；本文件补盲区。
-
----
+状态：`present` = 已有；`partial` = 明确缺少一部分；`missing` = 尚未实现；`N/A` = 当前产品不接。**present 不等于覆盖所有故障情形**。证据等级见 [文档索引](./README.md)。
 
 ## 0. 空上下文一分钟摘要
 
-| 问 | 答 |
-| --- | --- |
-| 项目是什么 | opencode 的桌面控制台前端（ARK 族设计语言，见 [`design.md`](./design.md)），产品代码 `app/` |
-| 引擎怎么接 | ACP stdio（桥）+ 通用 HTTP 透传 `/__t3/http` → 懒起 `opencode serve`（目前只用于 DELETE）。HALT 走 stdio notification，旧的 `/abort` 分流已于 `29f8ea0` 删除。**契约假设的正确性另见 [`engine-contract-audit.md`](./engine-contract-audit.md)** |
-| 工作目录 | 默认 `app/.sandbox`；左栏可输入绝对项目目录并应用重启 |
-| 项目配置 | **app 内无入口**读写 `opencode.json` / `permission.*`（审批为何不问无处解释） |
-| 验收账 | 见 `status.md` §2：全部有代码；#1、#2c、#5–9（新外观下复看）、#10、#12（视觉第 3 代）待主人目视 |
-| 最大结构性空洞 | 设置/配置面、diff/文件/终端/图片等工作面（HALT、cwd 已接） |
+- 核心单会话浏览器控制台已由主人验收，ARK 视觉与动效保留。
+- ACP stdio 承担主要引擎交互；HTTP 仅用于删除。中止用 notification，不用 HTTP abort。
+- 项目目录可原生选择并导入；配置入口只覆盖项目 `permission.edit`。
+- 下一阶段是 Tauri Windows 封装，未执行；多会话及工具工作面后置，准确范围见 status §4.6、§8。
 
----
+## 1. 能力边界
 
-## 1. 结论
-
-核心最小闭环已有真实现：会话增删载、流式对话、工具行、markdown、reasoning、model/mode/effort、审批条、事件日志、静默判据、重启、HALT（#1，stdio `session/cancel` notification）。  
-结构性空洞：**① 无设置/配置面 ② 无 diff/文件/终端/搜索/图片等工作面**。
-HTTP 通道只接了一单：**DELETE**。diff、revert、pty、file、search 可以走同一通道，产品侧未接。
-
----
+列表里有多条历史会话不等于后台会话可并发运行。工单详情已有真实输出，不等于已有文件树或 diff 工作面。编辑审批可点击不等于 F9 写回已经闭合。下面按这些边界记录，不把未来计划标成 partial。
 
 ## 2. 能力对照表
 
@@ -60,10 +43,11 @@ HTTP 通道只接了一单：**DELETE**。diff、revert、pty、file、search �
 | 能力 | 状态 | 证据 | 依赖 | 备注 |
 | --- | --- | --- | --- | --- |
 | 流式 / 工具行 / markdown / reasoning 折叠 / EVENTS / 静默 | **present** | 验收 #3 #5–#9 主人已过 | — | — |
-| 中途取消 HALT | **present · 待目视**（#1） | 【实测】无 `id` 的 stdio `session/cancel` notification，53ms 内 `stopReason:"cancelled"`；10s 看门狗报「未确认」 | `…10-34-39-594Z-cancel-notification.jsonl` | HTTP abort 路线已删（恒返回 `true`，不可作证据）。见审计 F1/F2 |
-| 重试 / 编辑末条 / fork 对话 | **missing** | 无代码 | 引擎机制多【未验】 | — |
+| 中途取消 HALT | **present**（#1） | 【实测】无 `id` 的 stdio `session/cancel` notification，53ms 内 `stopReason:"cancelled"`；10s 看门狗报「未确认」 | `…10-34-39-594Z-cancel-notification.jsonl` | HTTP abort 路线已删（恒返回 `true`，不可作证据）。见审计 F1/F2 |
+| 重试 / 编辑末条 | **missing** | 尚未接入；fork 单独见 B 节 | 引擎机制【未验】 | — |
 | compact / 清上下文 | **missing** | `available_commands_update` 故意不映射（rule 5） | 【未验】+ 契约讨论 | — |
-| 工具结果体（读了什么/grep 到什么） | **missing** | `tool_call` 只映射 title/status | **契约变更**（规则 23） | 目前只知「调了什么」 |
+| 工具结果体（读了什么/grep 到什么） | **present** | F8 已接真实目标、参数、输出、错误；主人验收 | `tool_call(_update)` | 按需打开浮动 inspector；未报告字段不编造 |
+| 上下文用量 | **present** | `usage_update` 映射 `usage.updated` | 引擎有条件发出 | 缺失显示未报告，不等于 token 明细 |
 
 ### D. 选项与配置
 
@@ -79,10 +63,10 @@ HTTP 通道只接了一单：**DELETE**。diff、revert、pty、file、search �
 
 | 能力 | 状态 | 证据 | 依赖 | 备注 |
 | --- | --- | --- | --- | --- |
-| 三档审批 UI | **partial**（#10 待目视） | 回包与 trace 同形【实测】 | 需 `permission.*=ask` | 默认永不触发；`optionId` 字面量 `once/always/reject`；`cancelled`→折成 reject；批准后引擎会反向调 `fs/write_text_file`（我方未实现）；权限按会话串行。见审计 F9/F10 |
+| 三档审批 UI | **partial**（UI 主人已验收） | 回包与 trace 同形【实测】 | 需 `permission.*=ask` | 默认永不触发；`optionId` 字面量 `once/always/reject`；`cancelled`→折成 reject；批准后引擎会反向调 `fs/write_text_file`（我方未实现）；权限按会话串行。见审计 F9/F10 |
 | 审批时 diff 预览 | **missing** | HTTP `session.diff` 存在【文档】 | HTTP + UI | 盲签风险 |
 | allow_always 语义 | **【未验】** | adapters §六.1 | 探针 | 点「始终允许」前须知 |
-| 「当前配置不会问你」 | **present** | 启动后读取 cwd 下 `opencode.json`，左栏显示「默认放行」等策略；迟到读取不会覆盖新选择 | 读配置 | 仍需主人目视验收审批卡触发 |
+| 「当前配置不会问你」 | **present** | 启动后读取 cwd 下 `opencode.json`，左栏显示「默认放行」等策略；迟到读取不会覆盖新选择 | 读配置 | 更多 permission 规则仍需手工配置 |
 
 ### F. 文件与工具面
 
@@ -99,9 +83,9 @@ HTTP 通道只接了一单：**DELETE**。diff、revert、pty、file、search �
 | 能力 | 状态 | 证据 | 依赖 | 备注 |
 | --- | --- | --- | --- | --- |
 | ACP stdio | **present** | bridge + transport | — | 规则 4：唯一字节通道 |
-| HTTP 透传 | **partial** | `transport.http` → 懒起 serve | — | 只用于 DELETE；**DELETE 未带 `directory`/`workspace`**（F3）；删除前没发 `session/close`（F21）。分流已删 |
+| HTTP 透传 | **partial** | `transport.http` → 懒起 serve | — | 只用于 DELETE；F21 已接 close → DELETE → list 确认；directory/workspace 遗留见 status §4 |
 | 断链 / 重启 / 链路态 | **partial**/present | 已连接 / 未连接；「字节通道已断开」结局条；重启 | — | 退出禁输入；无自动重开会话 |
-| Tauri 外壳 | **missing**（P2） | status 待补清单 | Tauri 工程 | 替换 bridge 时 transport 不变 |
+| Tauri 外壳 | **missing**（下一阶段） | status §8 仅有计划 | Rust 宿主 + 桌面 Transport + 生产构建 | 保留接口与 TS 契约，迁移系统 I/O |
 
 ### H. 图片
 
@@ -116,14 +100,14 @@ HTTP 通道只接了一单：**DELETE**。diff、revert、pty、file、search �
 | 能力 | 状态 | 证据 | 依赖 | 备注 |
 | --- | --- | --- | --- | --- |
 | 列表存多条 | **present** | #2 | ACP list | — |
-| 同时跑多个 / 后台会话 | **partial** | 单 transport、单 `view.sessionId`、全局 busy；后台会话状态尚未按会话分账 | 架构按会话分账 | status §4.6 未来更新计划 |
+| 同时跑多个 / 后台会话 | **missing** | 单 `view.sessionId`、全局 busy；尚未做按会话分账 | 架构按会话分账 | status §4.6 未来更新计划 |
 | 列表显示运行中 | **missing** | list 无状态字段 | 事件路由到非活动会话 | status §4.6 未来更新计划 |
 
 ### J. 操作流
 
 | 能力 | 状态 | 证据 | 依赖 | 备注 |
 | --- | --- | --- | --- | --- |
-| 设置面板 / 配置编辑器 | **missing** | 无 | UI + 文件 | 解锁「为何不问我」 |
+| 完整配置编辑器 | **missing** | 现有编辑审批 selector 不等于完整配置面 | UI + 文件 | 应用设置面板见 D 节 |
 | 空态可恢复 | **present** | 列表空态与记录空态都有「新建会话」、placeholder 链 | — | AGENTS §三 |
 | 导出会话 | **missing** | eventLog/stream 在内存 | 本地导出 | status §4.6 未来更新计划 |
 | Esc = HALT | **present**（#1） | 输入框内 Esc 走同一 `#halt` 路径（console.ts） | — | 「中止」只在运行中出现，与「发送」共用一个位置 |
@@ -132,34 +116,17 @@ HTTP 通道只接了一单：**DELETE**。diff、revert、pty、file、search �
 
 ---
 
-## 3. 建议优先级（子代理 Top 10，**未拍板**）
+## 3. 实施顺序
 
-供主人取舍；**不是已决定计划**。现行状态与未来更新计划见 [`status.md`](./status.md) §4.5–§4.6：
-
-1. ~~HALT（验收 #1）~~ **已实现，待目视**：stdio notification  
-2. **permission 配置可见/可设**——否则 #10 永看不到真请求
-3. 多会话并发 / 后台跑（未来更新）
-4. fork / resume / close 接线（已完成）
-5. 审批时 diff（未来更新）
-6. 粘贴图片（未来更新）
-7. 导出会话（未来更新）
-8. 工具结果体（规则 23 先改 adapters）
-9. 重试 / 编辑末条（引擎机制先【未验】）
-
-并列：设置面板、PTY、文件浏览器、搜索——依赖重，统一放入未来更新计划。
-
----
+只在 [status.md §8](./status.md) 维护当前 Tauri 计划；明确后置的能力见该文 §4.6。本文不再保留第二份 Top 10 排期。重命名、归档、完整设置、重试等其余 missing 项尚未排期。
 
 ## 4. 未能验证
 
-1. OpenAPI 162 路径未逐条展开；`session.rename` / compact 是否存在【未验】  
-2. `allow_always` 持久化  
-3. fork/resume/close 实际调用形状（仅 capabilities 声明）  
-4. ~~跨进程 abort~~ → 已闭合：跨进程无效（返回 `true` 但流不断），HTTP abort 路线整体删除，改走 notification  
-5. 删除后 `storage/session_diff/` 是否清理  
-6. 一切渲染观感（无头禁令；本文件不含「看过界面」声称）
-
----
+- `allow_always` 的持久化作用域、F9 客户端写回及 Windows 路径边界。
+- compact / archive 等未来能力的引擎接口，不能用旧 OpenAPI 快照直接定实现。
+- 删除后的 share 远端数据和历史差异存储清理。
+- WebView2 安装态、桌面 transport、安装 / 卸载与进程树清理，全部待 Tauri 阶段执行。
+- 主人已有浏览器目视结论；本次文档整理未重新查看渲染，也没有桌面观感结论。
 
 ## 5. 维护
 

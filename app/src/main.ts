@@ -17,11 +17,11 @@ import { mapResponse, errorReasonOf, failureEvents, sessionPresentInList, should
 import { deleteSession } from "./engine/engine-http.ts";
 import { cancelNotificationLine } from "./engine/cancel.ts";
 import type { AgentEvent } from "./contract/events.ts";
-import { createBridgeTransport, type Transport } from "./engine/transport.ts";
+import { createBridgeTransport, createTauriTransport, isTauriRuntime, type Transport } from "./engine/transport.ts";
 import { emptyView, reduceView, type ConsoleView } from "./view/derive.ts";
 import { beginWaiting, discardSamples, endTurn, observeActivity, report, startCadence, type ActivityPhase, type Cadence } from "./view/cadence.ts";
 import { mountConsole, type EventLogEntry, type SessionFacts } from "./ui/console.ts";
-import { canRecoverRunningTurn, linkDownFacts, routeSessionUpdate, sessionListFailureFacts, shouldApplyPermissionSync } from "./main-flow.ts";
+import { canRecoverRunningTurn, linkDownFacts, routeSessionUpdate, sessionListFailureFacts, sessionOpenCwd, sessionOpenNeedsRestart, shouldApplyPermissionSync } from "./main-flow.ts";
 
 type RecoveryState = {
   readonly sessionId?: string;
@@ -78,7 +78,7 @@ const readRecovery = (): RecoveryState => {
 const initialRecovery = readRecovery();
 const recoverableTurn = canRecoverRunningTurn(initialRecovery.busy, initialRecovery.sessionId, initialRecovery.promptId);
 const ui = mountConsole();
-const transport: Transport = createBridgeTransport(clientId);
+const transport: Transport = isTauriRuntime() ? createTauriTransport() : createBridgeTransport(clientId);
 
 let view: ConsoleView = initialRecovery.sessionId === undefined ? emptyView() : { ...emptyView(), sessionId: initialRecovery.sessionId };
 if (recoverableTurn && initialRecovery.promptMessageId !== undefined && initialRecovery.promptText !== undefined) {
@@ -728,6 +728,8 @@ ui.onCwdBrowse(() => {
 
 ui.onSessionLoad((sessionId, cwd) => {
   if (!engineReady("LOAD")) return;
+  const targetCwd = sessionOpenCwd(cwd, facts.cwd);
+  const needsRestart = sessionOpenNeedsRestart(facts.cwd, targetCwd);
   // Move the current-session rail immediately so the marker does not wait on the response.
   if (view.sessionId !== sessionId) {
     const sessions = view.sessions;
@@ -736,6 +738,7 @@ ui.onSessionLoad((sessionId, cwd) => {
   }
   patch({
     sessionId,
+    ...(targetCwd === undefined ? {} : { cwd: targetCwd }),
     phase: "载入中",
     phaseNote: `session/load ${sessionId.slice(0, 12)}…`,
     busy: false,
@@ -744,11 +747,30 @@ ui.onSessionLoad((sessionId, cwd) => {
   ui.setView("process");
   ui.setCommandEnabled(false);
   ui.setPlaceholder("正在回放历史");
-  send("session/load", {
-    sessionId,
-    cwd: cwd === "" || cwd === "NOT STATED" ? facts.cwd === undefined || facts.cwd === "NOT STATED" ? "." : facts.cwd : cwd,
-    mcpServers: [],
-  });
+  const sendLoad = (): void => {
+    if (view.sessionId !== sessionId) return;
+    ui.setCommandEnabled(false);
+    ui.setPlaceholder("正在回放历史");
+    send("session/load", { sessionId, cwd: targetCwd ?? ".", mcpServers: [] });
+    syncPermissionPolicy(targetCwd);
+  };
+  if (!needsRestart) {
+    sendLoad();
+    return;
+  }
+  cancelOutstandingPermission("打开历史会话");
+  permissionSyncRevision += 1;
+  pending.clear();
+  void transport
+    .kill()
+    .then(() => handshake(targetCwd))
+    .then(sendLoad)
+    .catch((error: unknown) => {
+      if (view.sessionId !== sessionId) return;
+      ui.setCommandEnabled(true);
+      ui.setPlaceholder("打开失败 · 新建会话，或再试一次");
+      patch({ phase: "就绪", phaseNote: "历史会话目录切换失败 · 会话仍保留", lastError: String(error).slice(0, 160) });
+    });
 });
 
 ui.onSessionFork((sessionId, cwd) => {

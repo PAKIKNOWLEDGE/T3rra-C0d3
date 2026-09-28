@@ -1,12 +1,16 @@
 {
-  "name": "t3rra-c0d3",
+  "name": "t3rra-c0d3-rhodes",
   "private": true,
   "version": "0.0.0",
   "type": "module",
-  "description": "T3rra 桌面控制台（重写）：opencode 引擎 + ARK 族（明日方舟实机界面）设计语言。产品代码在 app/，调研与证据在 docs/ 与 traces/。",
+  "description": "T3rra-C0d3-Rhodes：Windows 优先的 Tauri 2 coding-agent 控制台，使用 opencode ACP 与 ARK 族界面。",
   "scripts": {
     "check": "tsc --noEmit",
     "test": "vitest run",
+    "build": "vite build --config app/vite.config.ts",
+    "dev:tauri": "vite --config app/vite.config.ts --host 127.0.0.1 --port 5191 --strictPort",
+    "tauri:dev": "tauri dev",
+    "tauri:build": "tauri build",
     "check:demo": "node tools/check-demo.mjs",
     "check:traces": "node tools/check-traces.mjs",
     "check:docs": "node tools/check-docs.mjs",
@@ -16,10 +20,15 @@
     "dev": "vite --config app/vite.config.ts"
   },
   "devDependencies": {
+    "@tauri-apps/cli": "^2.12.0",
     "@types/jsdom": "^30.0.0",
     "@types/node": "^26.6.2",
     "jsdom": "^26.1.0",
+    "vite": "^7.3.6",
     "typescript": "^5.9.0",
     "vitest": "^3.2.0"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2.12.0"
   }
 }

@@ -65,36 +65,22 @@
 | `docs/` | 见下文 §六 |
 | `spike/` + `traces/` | 零成本 ACP 探针及报文证据（不进产物） |
 | `test/` · `tools/` | 单测 · 自研闸 |
-| `tasks/` | 未完成任务的半成品（见 `status.md` §4） |
+| `tasks/` | 历史任务草稿；不能据文件存在推断当前待办，现行计划见 `status.md` |
 | `C:\DEV\develop\3NDM1N15T4T0R` | 设计语言正本（外部仓库） |
 | `C:\DEV\develop\opencode` | opencode 上游源码（只读） |
 | `C:\DEV\develop\NIX\t3rra-core` | 上一代实现（只读，规则出处） |
 
 ## 五、怎么跑
 
-```
-npm install
-npm run dev          # 默认 http://localhost:5191/；端口被占会自动换（strictPort:false），以终端打印为准
-npm run check:all    # 提交前必须全绿
-```
+启动命令、环境要求、项目目录和审批前置集中维护在 [README.md](./README.md)；浏览器与桌面骨架复验步骤见 [status.md §3](./docs/status.md)。当前已有 Tauri 窗口与静态构建骨架；Rust transport、完整桌面能力和安装包仍未完成。
 
-**机器上要先有**：
-
-- Node（本机实测 v24.15.0；`package.json` 没写 engines）；
-- opencode 1.18.x（本机 1.18.32；v2 有破坏性改动，别升）；
-- 可选：`T3RRA_ENGINE_BIN` 指向可执行文件。
-
-**要真收到回复**：opencode 自己得先能出回复，也就是在终端里跑 `opencode` 能对话（provider 登录或免费模型，见 opencode 文档）。本仓不检查这一点；ACP 的 `authenticate` 能力也证明不了已登录。
-
-**要看到批准卡**：引擎在 `app/.sandbox/` 里干活（桥的 `sandboxDir()`，dev 启动时才创建），审批默认不问。要在该目录的 `opencode.json` 里设 `permission.edit = "ask"`。配置文件放这里才生效是按 opencode 的项目配置规则推断的【未验】。
-
-引擎解析顺序：`T3RRA_ENGINE_BIN` → `T3RRA_OMP_BIN` → 默认 opencode（`app/src/engine/resolve.ts`）。默认链不再回退到 omp；只有显式 `T3RRA_ENGINE=omp` 或 `T3RRA_OMP_BIN` 才会走旧引擎。默认 opencode 还会校验 `--version >= 1.18.0`。
+引擎解析顺序：`T3RRA_ENGINE_BIN` → `T3RRA_OMP_BIN` → 默认 opencode（`app/src/engine/resolve.ts`）。默认链不回退到 omp；只有显式 `T3RRA_ENGINE=omp` 或 `T3RRA_OMP_BIN` 才走旧引擎。已有 opencode 最低版本检查 `>= 1.18.0` 不等于锁定上界；本项目使用范围仍为 1.18.x。
 
 ## 六、文档系统
 
 | 文档 | 管什么 | 什么时候读 |
 | --- | --- | --- |
-| [`docs/status.md`](./docs/status.md) | **现在为真的事**：验收清单、已知未做、决定记录 | 每次接手 |
+| [`docs/status.md`](./docs/status.md) | **现在为真的事**：验收、遗留项、决定；§7 经验、§8 Tauri 计划 | 每次接手 |
 | [`docs/design.md`](./docs/design.md) | **视觉层唯一权威**：标准在哪、真数据映射、令牌、文案 | 动界面之前 |
 | [`docs/rules.md`](./docs/rules.md) | 产品规则 1–25、七道闸 | 动契约、渲染、节奏之前 |
 | [`docs/engine-contract-audit.md`](./docs/engine-contract-audit.md) | 对引擎的哪些假设是错的（F1–F21，附源码 path:line） | 动引擎交互之前 |

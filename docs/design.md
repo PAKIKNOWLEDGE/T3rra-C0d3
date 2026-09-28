@@ -50,6 +50,7 @@
 | 资源条 | **工单数**、**会话用时**、**上下文用量** | 工具事件计数；时钟；`usage.updated` |
 | 蓝色大块 | 新建会话 | `session/new` |
 | 会话块 | 编号（按列表位置）+ 标题 + 更新时间；当前会话 = 浅色块，带状态胶囊（已打开 / 运行中 / 等你批准）；等批准时加橙三角角标 | `session/list`；当前会话的 busy 与 permission |
+| 会话行 ↗ / × | 分叉为新会话 / 删除后核对列表；均有可见反馈 | `session/fork`；删除确认流程 |
 | 指令卡 | 黑底「指令 NN」名牌 +「已发出 \| 时间」双段 + 正文 | 操作者自己发出的指令 |
 | 回复卡 | 浅色 chip（引擎报告的 agent 名）+ markdown 正文 | `agent_message_chunk` |
 | 思考卡 | 灰色 chip「思考」，可折叠 | `agent_thought_chunk` |
@@ -62,6 +63,7 @@
 | 空态 | 「还没有打开会话」+ 蓝色「新建会话」 | 空流；AGENTS §三「空态必须给恢复动作」 |
 | 会话列表头「↻」 | 重新拉会话列表；列表取不到时换成「会话列表取不到」+「重新获取」 | `session/list`、`sessions.unavailable` |
 | 左栏底部 Workspace / Engine bin | 当前工作目录（可用系统目录选择器选择并自动应用，也可输入绝对路径）与可执行文件路径 | 桥的 probe；`SessionFacts.cwd`；原生目录选择器 |
+| 审批策略选择器 | 左栏 Workspace 读取并设置项目级 `permission.edit`，保存后重启 ACP | 桥端 `project-config` 读写 cwd 下 `opencode.json`；`SessionFacts.permissionEdit` |
 | 右栏「参数」 | model / effort 等非模式选项的下拉框 | `configOptions` |
 | 右栏「节奏」 | 静默判断：判断、静默秒数、基线、样本 n/3、阈值、最近信号（样本不足写「未建立」） | `cadence.ts`（规则 7–9） |
 | 右下引擎框 | 引擎名、连接状态、当前模型、「重启」按钮（杀进程重开） | `initialize` 响应、传输状态 |
@@ -74,8 +76,7 @@
 | 计划清单 | 引擎零发射 `plan`【源码】 | 引擎侧出现计划数据 |
 | 改动文件列表、+12/−4 行数 | diff 只在 HTTP 面，未接 | 接 HTTP diff |
 | 其它会话的「完成 / 已中止」胶囊 | `session/list` 只有 `{sessionId, cwd, title, updatedAt}` | — |
-| 审批策略选择器 | 左栏 Workspace 读取并设置项目级 `permission.edit`，保存后重启 ACP | 桥端 `project-config` 读写 cwd 下 `opencode.json`；`SessionFacts.permissionEdit` |
-| 附加文件 | 未实现 | 图片粘贴（开放项） |
+| 附加文件 | 未实现 | 图片输入（未来更新，见 status §4.6） |
 
 ## 5. 令牌与字体
 
@@ -113,7 +114,7 @@
 1. 先对照正本：[`demo/ark.html`](../demo/ark.html) 与 `DESIGN-LANGUAGE.md` §5.2 的组件表。
 2. 想加一个读数，先问它能追到哪条事件。追不到就去 §4 的「不画」表登记，不要硬画。
 3. 纯视觉改动只改 `app/index.html` 与 `app/src/ui/console.ts`。
-   要**新增数据**（例如上下文圆环）就是契约变更，按 `rules.md` §五走：
+   要**新增数据**就是契约变更（上下文圆环已经接入，下面是此类变更的顺序示例），按 `rules.md` §五走：
    1. 先在 `docs/adapters/opencode-acp.md` 登记源码与报文证据；
    2. 再改 `app/src/contract/events.ts`（加事件）和 `app/src/engine/acp.ts`（把真实 `usage_update` 从故意忽略的名单移到正式映射）；
    3. 然后改 `app/src/view/derive.ts`（加进 `ConsoleView` 与 `from` 溯源）；
@@ -131,3 +132,11 @@
 6. 大字是实心的，并且只给有意义的计数吗？
 7. 文案是中文功能词吗？有没有判词或假数据？
 8. 每个可点元素都有可观测结果吗？
+
+## 9. 动效与桌面迁移边界
+
+【文档：主人指定的动效参考】`C:\DEV\develop\tmp\OPUS5-5` 的 `console.html` / `specimen.js` 用于全局动效参照；ARK 构图与令牌正本仍是 §1，不以动效样例覆盖设计语言。
+
+动效覆盖页面进场、资源条子元素错峰、会话切换、工单 inspector 开合与控件反馈；不是只给一个浮窗加动画。`prefers-reduced-motion` 必须降级；流式更新不应重复触发整页进场或抢焦点。验收现状只记在 status，不在此重复计数。
+
+Tauri 首版保持已验收的内容区，优先使用系统标题栏和窗口控制；不借套壳重做主题。WebView2 下核对字体资源路径、不同 DPI 的资源条、窄窗和 inspector 边界。安装包中的实际表现由主人复验，浏览器验收不能自动转记为桌面验收。

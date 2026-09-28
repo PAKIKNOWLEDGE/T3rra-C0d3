@@ -4,3 +4,5 @@ node_modules/
 dist/
 .vite/
 .claude/worktrees/
+app/dist/
+src-tauri/target/

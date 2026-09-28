@@ -1,7 +1,9 @@
 # opencode ACP 实测映射表
 
 时点：**2026-09-23**；**2026-09-24 按 [`engine-contract-audit.md`](../engine-contract-audit.md) 修订**（§三 cancel 端到端闭合与 session/list 实证、split-brain 入库、§四 F9 机制订正）。被测引擎：`opencode 1.18.32`（Windows，`opencode acp`），ACP `protocolVersion` **1**。  
-对照基线：`omp 18.2.6`（t3rra-core）。对照对象：t3rra-core `docs/adapters/acp.md`（按 omp 报文，含有损列）。
+对照基线：`omp 18.2.6`（t3rra-core）。历史对照对象：上一代 t3rra-core 的 ACP 笔记（按 omp 报文）。该笔记不作为本次接手依赖，现行 opencode 契约以本文的源码与 trace 引用为依据。
+
+> 2026-09-28 文档收口：本文维护协议与报文依据，不维护产品进度；现状见 [status.md](../status.md)。本轮未重跑探针或审查上游代码，既有证据保留原采样日期。
 
 **每条结论均标来源。** 与本文冲突时，**以本机实测为准**（本轮已纠正两处）。
 
@@ -66,7 +68,7 @@
   （首测曾挑到空会话、结论相反；换有历史会话才定——挑会话是此类实验的必要条件。）
 - **`session/list` 四字段映射已被真实报文证实正确（2026-09-24 闭合，审计 F11）**：本仓 3 份 trace 记录了真实行（`traces/opencode/opencode-acp-2026-09-24T10-35-48-113Z-split-brain.jsonl`、`traces/opencode/opencode-acp-2026-09-24T11-00-34-512Z-split-brain.jsonl`、`traces/opencode/opencode-acp-2026-09-24T10-34-39-594Z-cancel-notification.jsonl`）【实测】。行形状 `{sessionId, cwd, title, updatedAt}`；**`updatedAt` 是 ISO-8601 字符串**（例 `"2026-09-24T10:35:50.218Z"`；上游 `acp/service.ts:268` `new Date(item.time.updated).toISOString()`）；新建会话**有** title（`New session - <ISO>`）。我方 `responses.ts:39-57` 的映射（sessionId|id 双写兼容、title/cwd 缺失退 `""`、`updatedAt` 用 `String()` 归一）对真实行全部成立——**映射本身正确**，旧「0 条报文支持」的说法作废。  
   已【源码】确认的行为：`limit=100` 硬编码、`roots:true` 只列 root 会话、`nextCursor` = 页尾条目 updatedAt 毫秒字符串、内存中未落盘的会话的排序与 title【未验，审计 F11 指出「置顶」说法不准】。  
-  **已接入产品**：`responses.ts` → `sessions.updated`；左栏会话列表（**未做分页**）。删除走 HTTP **`DELETE /session/{sessionID}`**（OpenAPI），经桥 `/http` 转到懒起的 `opencode serve`（主人验收 #2 的路径）。按路径分流已于 `29f8ea0` 随 HTTP abort 一起删除。  
+  删除的 HTTP 方法为 **`DELETE /session/{sessionID}`**（OpenAPI）；其与 stdio 内存状态的一致性证据见下方删除条目。产品分页与删除处置见 status。
   LOAD 走 ACP `session/load { sessionId, cwd, mcpServers }`（与 spike 同形）。
 - **`session/cancel` 是 notification，不是「不存在」（2026-09-24 源码更正）**：  
   上游 `packages/opencode/src/acp/agent.ts:83` 实现 `cancel(CancelNotification)` → `service.ts:357-360` → `POST /session/{id}/abort`。  
@@ -89,13 +91,13 @@
   单发 `DELETE` 只动库行——`DELETE` 得 200、同端口 `GET` 得 404，但 ACP 子进程的 `session/list` **仍列出该会话**（split-brain）。  
   证据：`traces/opencode/opencode-acp-2026-09-24T10-35-48-113Z-split-brain.jsonl`（盲审原始运行）+ `opencode-acp-2026-09-24T11-00-34-512Z-split-brain.jsonl`（可由 `spike/probe-split-brain.mjs` 复现）。  
   `session/close`（参数 `{sessionId}`，响应 `{}`）会做内存移除 + `abortBackingSession`（`acp/service.ts:347-355`）；实测先 close 再 DELETE、或先 DELETE 再 close，**事后 `session/list` 都不再列出**——见 `traces/opencode/opencode-acp-2026-09-24T11-15-49-216Z-delete-verify.jsonl`（`spike/probe-delete-verify.mjs`，provider-free）。  
-  取顺序 **close → DELETE**（close 顺带中断在途 turn）。**此项代码尚未接**：`app/src/main.ts` 的删除目前只发 DELETE。【未验】close 一个正在跑 turn 的会话时客户端会收到哪些结束信号。
+  顺序依据为 **close → DELETE → list 核对**；不能只用 HTTP 状态码证明跨进程删除完成。【未验】close 一个正在跑 turn 的会话时客户端会收到哪些结束信号。
 - **项目配置的持久化路径与上游 HTTP 面不一致**【源码 2026-09-26】：`GET /config` 与 `PATCH /config` 由上游 `packages/opencode/src/server/routes/instance/httpapi/groups/config.ts:10-42` 声明，项目目录通过 `directory` 查询参数传入（`middleware/workspace-routing.ts:33-35,88-90`），处理器 `handlers/config.ts:8-21` 读取当前配置并在更新后触发实例回收；但 `Config.update` 在 `packages/opencode/src/config/config.ts:638-650` 固定写入项目目录下的 `config.json`，而项目配置加载由 `packages/opencode/src/config/paths.ts:9-18` 只搜索 `opencode.jsonc` / `opencode.json`。因此本仓配置入口不再调用上游 `PATCH /config`，而是由桥端维护当前 cwd 的 `opencode.json`；已有 `opencode.jsonc` 或无效 JSON 时返回可见错误，不覆盖用户文件。`permission` 的项目配置形状来自 `packages/core/src/v1/config/permission.ts:14-39`，动作值为 `allow` / `ask` / `deny`。本仓只修改 `permission.edit`，保存后重启 ACP 以让新目录配置生效；配置读取带版本与 cwd 校验，迟到响应不得覆盖新策略。
 - **ACP 初始化可在重连后再次握手**【源码 2026-09-26】：`packages/opencode/src/acp/service.ts:94-113` 的 `initialize` 每次返回静态协议能力和 `agentInfo`，不创建 session、不改变当前 turn。本仓在浏览器刷新后复用同一个 ACP 子进程并重新发送 `initialize`；这只恢复连接，不伪造新的会话或回合。
 - **`session/set_config_option { sessionId, configId, value }` 可用**，响应带回**完整 `configOptions`**——界面照响应重渲染，不自维护清单。
 - **`session/new` 响应不含 `modes`/`models` 字段**（`acp/service.ts:199-206`）：是**字段不存在**，不是 `null`。模式在 configOptions 的 `mode`。`load`/`resume`/`fork` 同样不返回。
-- **`session/resume` / `session/fork` / `session/close` / `session/set_mode` / `session/set_model` 均已实现**【源码】。回放语义**不同**：`load` = 全量回放；`resume` = **完全不回放**（只读最近 20 条恢复 model/variant/mode）；`fork` = 只回放 20 条。当前仓已开始接线，具体路径见下一条。
-- 本仓接线时沿用上游参数形状：`session/resume` 在 `packages/opencode/src/acp/service.ts:295-347` 使用 `{ cwd, sessionId, mcpServers? }`，返回 `configOptions` 但不返回 `sessionId`；`session/fork` 在 `service.ts:362-416` 使用 `{ cwd, sessionId, mcpServers? }`，返回新 `sessionId` 与 `configOptions`；`session/set_mode` / `session/set_model` 在 `service.ts:468-498` 分别使用 `{ sessionId, modeId }` / `{ sessionId, modelId }`，响应为空对象（模型切换另发 `config_option_update`）。
+- **`session/resume` / `session/fork` / `session/close` / `session/set_mode` / `session/set_model` 均已实现**【源码】。回放语义**不同**：`load` = 全量回放；`resume` = **完全不回放**（只读最近 20 条恢复 model/variant/mode）；`fork` = 只回放 20 条。参数和响应形状见下一条；产品接入状态见 status。
+- 上游参数与响应形状【源码】：`session/resume` 在 `packages/opencode/src/acp/service.ts:295-347` 使用 `{ cwd, sessionId, mcpServers? }`，返回 `configOptions` 但不返回 `sessionId`；`session/fork` 在 `service.ts:362-416` 使用 `{ cwd, sessionId, mcpServers? }`，返回新 `sessionId` 与 `configOptions`；`session/set_mode` / `session/set_model` 在 `service.ts:468-498` 分别使用 `{ sessionId, modeId }` / `{ sessionId, modelId }`，响应为空对象（模型切换另发 `config_option_update`）。
 - **`session/cancel` 见上方更正条目**（notification 存在；请求形态 -32601 是实验方法错误）。
 
 ## 四、有损列（相对 omp）
@@ -116,13 +118,13 @@
 2. options 能否填 model / mode / thinking → model ✓、mode ✓（两档）、effort **按模型** ✓、`thinking` 名 ✗。
 3. `session/load` 是否可用 → **可用且规范**。
 
-**代价仍是一个 AgentSource 实现**（架构承诺；本仓为整树重写，见 status）。界面侧三处均按 runtime 清单渲染：模式档数、effort 出现条件、会话列表无轮数。**图片不离本机**有报文层证据。
+**代价仍是一个 AgentSource 实现**（架构承诺；本仓为整树重写，见 status）。界面侧三处均按 runtime 清单渲染：模式档数、effort 出现条件、会话列表无轮数。**ACP 支持本地图片附件**有能力声明证据；这不证明 provider 推理时图片不出网，也不等于产品已接入带图 prompt。
 
 ## 六、未闭合
 
 1. **`allow_always` 语义**：权限记忆由引擎持久化（键是什么）还是每会话重来？界面显示「始终允许」前须知。
-2. **默认静默放行**：默认 `permission` 不 `ask`，审批永不出现。产品是否点出「当前配置不会问你」——产品决策。
+2. **默认静默放行**是配置行为，不是权限能力缺失；产品配置入口的覆盖范围只在 status 登记。
 3. ~~`usage_update` 字段含义~~ → 已闭合【源码】：是上下文填充率，见 §四 usage 行。
 4. **v2 HTTP SSE 断连/溢流**对静默判据的影响——本轮只测 ACP。
 5. ~~`session_info_update` 是否存在~~ → 已闭合【源码】：零发射点，见 §二。
-6. **目标平台**：将来可能 NixOS。那时要重审 Tauri 结论，WebKitGTK 的坑见 [`backends/opencode.md`](../backends/opencode.md) 与 [`backends/dsh.md`](../backends/dsh.md)。**现在不动，打包前须复核。**
+6. **目标平台**：将来可能 NixOS。那时要重审 Tauri 结论，WebKitGTK 的坑见 [`backends/opencode.md`](../backends/opencode.md) 与 [`backends/dsh.md`](../backends/dsh.md)。**Windows 首包依据见 status §8；NixOS 仍需单独复核，不与首包捆绑。**

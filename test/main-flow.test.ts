@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { canRecoverRunningTurn, linkDownFacts, routeSessionUpdate, sessionListFailureFacts, shouldApplyPermissionSync } from "../app/src/main-flow.ts";
+import { canRecoverRunningTurn, linkDownFacts, routeSessionUpdate, sessionListFailureFacts, sessionOpenCwd, sessionOpenNeedsRestart, shouldApplyPermissionSync } from "../app/src/main-flow.ts";
 
 describe("assembly-root wiring decisions", () => {
   it("keeps list failure visible as a failure instead of clearing rows", () => {
@@ -28,6 +28,12 @@ describe("assembly-root wiring decisions", () => {
     expect(shouldApplyPermissionSync(3, 4, "C:\\project", "C:\\project")).toBe(false);
     expect(shouldApplyPermissionSync(4, 4, "C:\\old", "C:\\new")).toBe(false);
     expect(shouldApplyPermissionSync(4, 4, "C:\\project", "C:\\project")).toBe(true);
+  });
+
+  it("uses the historical row cwd and restarts when it differs from the active engine cwd", () => {
+    expect(sessionOpenCwd("C:\\DEV\\develop\\文学概论202609", "C:\\Users\\pachu77\\AppData\\Roaming\\com.t3rra.console\\sandbox")).toBe("C:\\DEV\\develop\\文学概论202609");
+    expect(sessionOpenNeedsRestart("C:\\Users\\pachu77\\AppData\\Roaming\\com.t3rra.console\\sandbox", "C:\\DEV\\develop\\文学概论202609")).toBe(true);
+    expect(sessionOpenNeedsRestart("C:\\DEV\\develop\\文学概论202609", "C:\\DEV\\develop\\文学概论202609")).toBe(false);
   });
 
   it("restores the locked boundary only when a refresh has a complete turn record", () => {

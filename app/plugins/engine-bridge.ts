@@ -4,9 +4,9 @@
  * It understands nothing about ACP event vocabulary (rule 4): /http only forwards method+path+body
  * to a local `opencode serve`.
  *
- * Why it exists at all: a browser cannot spawn a subprocess, and the first milestone is a
- * window that shows a real stream. When the Tauri shell lands, this file is deleted and the
- * renderer keeps using the same `Transport` interface.
+ * Why it exists at all: a browser cannot spawn a subprocess. It remains the browser development
+ * and comparison path after the Tauri shell lands; the renderer selects the shell transport only
+ * when `isTauri()` reports a desktop window.
  *
  * Engine resolution is shared with the app (`app/src/engine/resolve.ts`), so the dev pipe and
  * the future shell cannot drift apart on ordering.

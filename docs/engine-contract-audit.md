@@ -6,7 +6,7 @@
 **结论先行**：本项目此前对 opencode 的行为假设基本来自抓包反推，其中多处反推错了。最严重的一条：HALT 的整套架构（双进程、端口分流、正则路由）建立在一个**方法错误的否证实验**上（F1）。  
 **修订记录 2026-09-24（同日，盲审之后）**：本文初稿的严重度分布有偏差，已按证据订正——F9 机制写错、F11 的「0 报文支持」已被真实报文推翻、F13 归因过重、F20 证据等级拔高、F1 的【未验】已闭合成【实测】。另新增 F21（split-brain），影响高于本文约一半条目。当前真相以 [`status.md`](./status.md) §4 与本文修订后条目为准。
 
-**2026-09-26 说明**：§1 各条描述的是 2026-09-24 批次 1 **修复之前**的代码。F1、F2、F4、F5、F6、F7、F10 已修，F21 已实测出修法但未接线。逐条处置现状见本文 §5 与 `status.md` §4。§4 的「假话清单」已在 2026-09-26 文档重构中处理完。
+**阅读边界（2026-09-28 整理）**：本文保留 2026-09-24 审计时的源码 / 报文证据。下文“当前”“未接”“待实施”、行号和 §2 对照均指当时快照，**不是今天的待办**。今天的验收与遗留只看 [status.md §2、§4](./status.md)，F12 等后续参数证据见 [ACP 映射表](./adapters/opencode-acp.md)。本轮没有重做代码审计，不将旧发现重报成新 bug。
 
 ## 0.0 严重度分层（初稿缺这一层，导致 20 条看起来同等致命）
 
@@ -16,7 +16,7 @@
 | **造事实级** | F2、F6、F7、F8、F11(部分) | 界面显示并不存在的事实，违反规则 12 |
 | **挂死级** | F5、F10、F19 | 状态机不可恢复 |
 | **协议级** | F3、F20、F9(订正后) | 当前不炸，换环境即炸 |
-| **卫生级** | F12–F18 | 证据链与规矩一致性，不影响当前运行。
+| **卫生级** | F12–F18 | 证据链与规矩一致性，不影响当前运行。 |
 
 ---
 
@@ -259,31 +259,15 @@
 
 ---
 
-## 5. 修复顺序与处置（2026-09-26 更新）
+## 5. 证据与实施的分工
 
-P0 批次已于 2026-09-24 完成（`status.md` §5）。下表保留原建议，并在每行开头标出处置。
+本报告不再维护修复进度和优先级。原 P0/P1/P2 批次历史可从 git 查阅；当前已修与残留见 [status.md](./status.md)，下一阶段封装计划见其 §8。
 
-| 优先级 | 动作 | 理由 |
-| --- | --- | --- |
-| ~~**P0-a**~~ | ~~新探针：notification `session/cancel` 端到端~~ | **已完成 2026-09-24**【实测】：`spike/probe-cancel-notification.mjs` → `10-34-39-594Z-cancel-notification.jsonl`，53ms `stopReason:"cancelled"`。**决定：分流删除**，cancel 走 stdio notification |
-| ~~**P0-a'**~~ **已完成 `29f8ea0`** | 删除双进程分流：`engine-bridge.ts` 的 `acp --port` spawn 与 `/abort` 路径正则；HALT 改发 stdio notification；去掉 `status<400` 即成功的判定 | F1 + F2；这是唯一被实测判为冗余的结构 |
-| ~~**P0-e**~~ **实测已完成（`ddb93cf`），修法未接线** | split-brain 缓解实测：删除前先 stdio `session/close`，再看 stdio `session/list` 是否仍列出 | F21；影响已被勾验收项 #2 |
-| ~~**P0-b**~~ **已完成** | 契约补 `prompt.failed` / `link.down` / `permission.cancelled`；错误响应**不再当成功** | 止住「造事实」类缺陷（F6/F7/F10） |
-| ~~**P0-c**~~ **已完成** | 所有 `session/update` 按 `params.sessionId` 路由 | 多会话前提；停止事实串台（F4） |
-| ~~**P0-d**~~ **已完成（改为按报文形状判定响应；分域在 JSON-RPC 里做不到）** | 请求 id 与引擎请求 id 分域；RESTART 清 pending | 止住审批被吞、turn 挂死（F5） |
-| **P1-a** 基本完成（10s 看门狗 + 以 `prompt.ended` 为准） | 中断判定改为事件驱动（`stopReason:cancelled` / status idle），HTTP 返回值只当「已受理」 | F2 |
-| **P1-b** 未做（abort 已删，只剩 DELETE） | `abort`/`DELETE` 带 `directory`；分流正则失配时**显式失败**不回落（分流删除后此项只剩 `directory` + 失配须失败） | F3 |
-| **P1-c** | 工具行映射 `status`/`title` 更新；非文本 content 走 unmapped；**cancelled 后的冲刷不计入 cadence 样本** | F8 + F13 残留问题 1 |
-| **P1-d** | `session/list` 分页消费 `nextCursor`（>100 条时不得只显示一页且不声明 absence）；**字段映射已报文证实正确，不必重测** | F11（已订正） |
-| **P1-e** | 回合结束的权威信号源：`idleSignal` 为 null 时如何定论 | F13 残留问题 2 + F7 |
-| **P2-a** | 接 `resume`/`fork`/`close`/`set_mode`/`set_model` | 已声明能力零消费 |
-| **P2-b** | 目录选择器（抄官方 picker） | 项目根硬伤 |
-| **验证体系** | bridge/transport/main 加测；`check:traces` 支持 glob 与 prose 实测登记；清单覆盖动态控件；guard 正则扩形态；mock 不得恒 200 true | F16 |
-| **规矩** | jsdom 例外登记（窄化到 `test/**` 的 DOM 结构断言）；版本下限校验；**新增 `check:boundary` 已落** | F17/F18 + T1 |
+复用证据时仍需保留三个限制：F1 的 request 失败不能否证 notification；F13/F14 的旧 verdict 不可解读；F21 的 HTTP 成功必须与 ACP 会话可见性分开验证。新增引擎交互仍须先在 ACP 映射表登记本机上游 path:line。
 
----
+## 6. 审计当日未验证的范围（2026-09-24 快照）
 
-## 6. 本审计未能验证（不藏）
+此列表保留当时证据边界，不用于当前排期；后续覆盖情况通过 status 和 ACP 映射表关联。
 
 1. ~~notification `session/cancel` 端到端能否掐断在途 turn~~ → **已验 2026-09-24【实测】**，见 F1。新衍生出的未验项：cancel 发生时若有一条 `session/request_permission` 正挂在客户端，引擎侧如何收尾（关联 F10 的 MUST-cancelled）
 2. `@agentclientprotocol/sdk@0.21.0` 包体不在本机（无 node_modules），方法名表取自 unpkg 已发布包【SDK-remote】，需 `bun install` 后比对 integrity 才能升【实测】

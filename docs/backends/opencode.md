@@ -1,5 +1,7 @@
 # 候选后端 B — opencode
 
+> **历史选型快照（2026-09-21 调研，含后续订正）**：版本、规模、架构和链接按采样时点理解，不代表今日上游现状；本轮未重新调研。当前引擎已经选定，见 [status.md](../status.md)；Tauri 封装只按该文 §8 推进，不据本文重开选型。
+
 **身份**：`github.com/anomalyco/opencode`（原 `sst/opencode`）。  
 **209k star / 27.5k fork / MIT / `dev` 分支 / 约 15,770 commits。**【文档】
 
@@ -63,7 +65,7 @@ v2 相关端点：
 【文档】v2 prompt：`{ text, files: PromptInput.FileAttachment[], … }`。图片为随 prompt 的本地附件。  
 包列表无 omp 式 blob-broker / uploader / 图床子系统；配置仅 `media.image.auto_resize`（本地缩放）。
 
-→ **omp「图片发布到第三方」的痛点在此后端不存在。**【文档】  
+→ 【文档】该调研未发现 omp 式独立图床发布管线；不代表图片交给远程模型时不出网。
 （未穷举全部代码，已核包列表与 prompt 契约。）
 
 ---

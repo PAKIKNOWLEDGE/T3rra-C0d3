@@ -1,5 +1,7 @@
 # 候选后端 A — omp（`oh-my-pi`）
 
+> **历史选型快照（2026-09-21 调研，含后续订正）**：版本、规模、架构和链接按采样时点理解，不代表今日上游现状；本轮未重新调研。当前引擎已经选定，见 [status.md](../status.md)；Tauri 封装只按该文 §8 推进，不据本文重开选型。
+
 **身份**：`github.com/can1357/oh-my-pi`，本机 checkout `C:\DEV\develop\NIX\oh-my-pi`。  
 t3rra-core 曾用引擎。本机版本 `18.2.6`。【实测】
 

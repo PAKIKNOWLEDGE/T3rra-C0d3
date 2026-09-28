@@ -38,8 +38,27 @@ export interface Transport {
   dispose(): void;
 }
 
+import { Channel, invoke, isTauri } from "@tauri-apps/api/core";
+
 const PREFIX = "/__t3";
 const CHOOSE_FOLDER_TIMEOUT_MS = 65_000;
+
+type TauriTransportEvent = {
+  readonly kind: "line" | "exit" | "error" | "linkDown";
+  readonly line?: string | null;
+  readonly code?: number | null;
+  readonly signal?: string | null;
+  readonly message?: string | null;
+  readonly reason?: string | null;
+};
+
+export const isTauriRuntime = (): boolean => {
+  try {
+    return isTauri();
+  } catch {
+    return false;
+  }
+};
 
 export const createBridgeTransport = (clientId: string): Transport => {
   const query = `client=${encodeURIComponent(clientId)}`;
@@ -162,6 +181,108 @@ export const createBridgeTransport = (clientId: string): Transport => {
     dispose(): void {
       stream?.close();
       stream = undefined;
+    },
+  };
+};
+
+/**
+ * Tauri shell transport. Rust owns only process and system I/O; this module still moves
+ * complete LF-delimited lines and leaves ACP interpretation to the existing TypeScript path.
+ */
+export const createTauriTransport = (): Transport => {
+  const lineHandlers: ((line: string) => void)[] = [];
+  const exitHandlers: ((info: { code: number | null; signal: string | null }) => void)[] = [];
+  const errorHandlers: ((message: string) => void)[] = [];
+  const linkDownHandlers: ((reason: string) => void)[] = [];
+  let channel: Channel<TauriTransportEvent> | undefined;
+  let attachPromise: Promise<void> | undefined;
+  let linkUp = false;
+
+  const reportLinkDown = (reason: string): void => {
+    if (!linkUp) return;
+    linkUp = false;
+    for (const handler of linkDownHandlers) handler(reason);
+  };
+
+  const ensureAttached = (): Promise<void> => {
+    if (attachPromise !== undefined) return attachPromise;
+    channel = new Channel<TauriTransportEvent>((event) => {
+      if (event.kind === "line" && event.line !== undefined && event.line !== null && event.line !== "") {
+        for (const handler of lineHandlers) handler(event.line);
+        return;
+      }
+      if (event.kind === "exit") {
+        for (const handler of exitHandlers) handler({ code: event.code ?? null, signal: event.signal ?? null });
+        return;
+      }
+      if (event.kind === "error") {
+        for (const handler of errorHandlers) handler(event.message ?? "engine error");
+        return;
+      }
+      if (event.kind === "linkDown") {
+        reportLinkDown(event.reason ?? "transport link down");
+      }
+    });
+    attachPromise = invoke<void>("engine_attach", { channel })
+      .then(() => { linkUp = true; })
+      .catch((error: unknown) => {
+        attachPromise = undefined;
+        channel = undefined;
+        reportLinkDown(String(error));
+        throw error;
+      });
+    return attachPromise;
+  };
+
+  const call = async <T>(command: string, args?: Record<string, unknown>): Promise<T> => {
+    await ensureAttached();
+    try {
+      return await invoke<T>(command, args);
+    } catch (error: unknown) {
+      reportLinkDown(String(error));
+      throw error;
+    }
+  };
+
+  return {
+    async probe(): Promise<TransportProbe> {
+      return call<TransportProbe>("engine_probe");
+    },
+    async spawn(cwd?: string): Promise<void> {
+      await call<void>("engine_spawn", { args: { cwd: cwd ?? null } });
+    },
+    async chooseFolder(): Promise<string | undefined> {
+      const path = await call<string | null>("engine_choose_folder");
+      return path === null || path === "" ? undefined : path;
+    },
+    async projectConfig(method: "GET" | "PATCH", cwd: string, config?: unknown): Promise<TransportHttpResult> {
+      return call<TransportHttpResult>("engine_project_config", { args: { method, cwd, config: config ?? null } });
+    },
+    async write(line: string): Promise<void> {
+      await call<void>("engine_write", { line });
+    },
+    async kill(): Promise<void> {
+      await call<void>("engine_kill");
+    },
+    async http(method: string, path: string, body?: unknown): Promise<TransportHttpResult> {
+      return call<TransportHttpResult>("engine_http", { args: { method, path, body: body ?? null } });
+    },
+    onLine(handler): void {
+      lineHandlers.push(handler);
+    },
+    onExit(handler): void {
+      exitHandlers.push(handler);
+    },
+    onError(handler): void {
+      errorHandlers.push(handler);
+    },
+    onLinkDown(handler): void {
+      linkDownHandlers.push(handler);
+    },
+    dispose(): void {
+      channel = undefined;
+      attachPromise = undefined;
+      linkUp = false;
     },
   };
 };

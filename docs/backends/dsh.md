@@ -1,5 +1,7 @@
 # 候选后端 C — dsh + Tauri 桌面壳
 
+> **历史选型快照（2026-09-21 调研，含后续订正）**：版本、规模、架构和链接按采样时点理解，不代表今日上游现状；本轮未重新调研。当前引擎已经选定，见 [status.md](../status.md)；Tauri 封装只按该文 §8 推进，不据本文重开选型。
+
 **身份**：`github.com/deepseek-ai/deepseek-harness`（下称 dsh）。  
 **232k star / 27.8k fork / MIT / `master` / 约 18,059 commits。**【文档】  
 桌面壳：`github.com/dsh-tauri/deepseek-harness-desktop`，**2.4k star / 161 fork。**【文档】

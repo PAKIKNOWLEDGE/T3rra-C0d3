@@ -44,6 +44,17 @@ export const canRecoverRunningTurn = (
   promptId: number | undefined,
 ): boolean => busy && sessionId !== undefined && sessionId !== "" && promptId !== undefined && Number.isInteger(promptId);
 
+/** Resolve the directory carried by a session row without falling back to the sandbox silently. */
+export const sessionOpenCwd = (rowCwd: string, currentCwd: string | undefined): string | undefined => {
+  if (rowCwd !== "" && rowCwd !== "NOT STATED") return rowCwd;
+  if (currentCwd !== undefined && currentCwd !== "" && currentCwd !== "NOT STATED") return currentCwd;
+  return undefined;
+};
+
+/** A historical session from another project must run in that project's ACP process. */
+export const sessionOpenNeedsRestart = (currentCwd: string | undefined, targetCwd: string | undefined): boolean =>
+  targetCwd !== undefined && targetCwd !== currentCwd;
+
 export const linkDownFacts = (reason: string): { readonly busy: false; readonly phase: "链路断开"; readonly phaseNote: string; readonly lastError: string } => ({
   busy: false,
   phase: "链路断开",
